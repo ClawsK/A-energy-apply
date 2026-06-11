@@ -1,0 +1,236 @@
+# 成员A：前端架构与认证模块负责人 — 工作日志
+
+## 基本信息
+
+- **姓名**：[成员A姓名]
+- **职责**：前端架构搭建、路由配置、认证体系、全局样式、API服务层
+- **负责文件**：App.js、index.js、Layout.js、ProtectedRoute.js、useAuth.js、api.js、global.css
+
+---
+
+## 日志1（第1天）：React项目搭建与路由配置
+
+### 今日完成工作
+
+1. **创建React项目**
+   - 使用 `npx create-react-app frontend` 创建项目
+   - 安装依赖：`npm install react-router-dom axios antd @ant-design/icons`
+   - 配置 `package.json` 中的项目信息
+
+2. **配置应用入口**
+   - 创建 `src/index.js`：
+     - 使用 `ReactDOM.createRoot` 创建根节点
+     - 引入 `ConfigProvider` 配置 Ant Design 中文语言包
+     - 引入 `BrowserRouter` 启用客户端路由
+     - 引入全局样式 `global.css`
+
+3. **配置路由系统**
+   - 创建 `src/App.js`：
+     - 定义路由结构：`/login`、`/register`（公开路由）
+     - 嵌套路由：`/`（需认证）→ Home、Create、Detail
+     - 引入 `AuthProvider` 提供全局认证上下文
+     - 配置 `ProtectedRoute` 路由守卫
+
+4. **创建布局组件**
+   - 创建 `src/components/Layout.js`：
+     - 使用 Ant Design `Layout` 组件（Header、Content、Footer）
+     - 顶部导航栏：系统标题、水平菜单、用户头像下拉
+     - 内容区域：通过 `Outlet` 渲染子路由
+     - 底部页脚：版权信息
+   - 创建 `src/components/ProtectedRoute.js`：
+     - 使用 `useAuth` 检查认证状态
+     - 未登录时通过 `Navigate` 重定向到 `/login`
+
+### 技术细节
+
+- React Router v6 使用 `useRoutes` 和 `Outlet` 实现嵌套路由
+- `BrowserRouter` 使用 HTML5 History API，URL 无 `#` 号
+- `AuthProvider` 使用 React Context API 实现全局状态管理
+- `ProtectedRoute` 通过条件渲染控制访问权限
+
+### 遇到的问题
+
+- 路由嵌套时 `Outlet` 的使用方式不熟悉
+- Ant Design 5 的 `Menu` 组件 API 与 v4 有差异
+- 查阅官方文档和示例后解决
+
+### 明日计划
+
+- 实现 API 服务层封装
+- 配置 axios 拦截器
+
+---
+
+## 日志2（第3天）：API服务层与认证Hook
+
+### 今日完成工作
+
+1. **创建API服务层**
+   - 创建 `src/services/api.js`：
+     - 创建 axios 实例，配置 `baseURL` 为 `http://localhost:8080/api`
+     - 设置超时时间 10 秒
+   - 配置**请求拦截器**：
+     - 从 `localStorage` 读取 `token`
+     - 如果存在，添加到请求头 `Authorization` 字段（Bearer 格式）
+   - 配置**响应拦截器**：
+     - 捕获 401 错误，自动清除 token，跳转登录页
+   - 定义 API 分组：
+     - `authAPI`：登录、注册、一键测试登录、获取用户信息、发送短信、重置密码
+     - `submissionAPI`：创建、获取列表、获取详情、更新、删除、提交、撤回
+
+2. **实现认证状态管理 Hook**
+   - 创建 `src/hooks/useAuth.js`：
+     - 使用 `createContext` 创建 `AuthContext`
+     - 创建 `AuthProvider` 组件：
+       - 初始化时检查 `localStorage` 中是否有 token
+       - 如果有，调用 `authAPI.getProfile()` 获取用户信息
+       - 成功则设置 `user` 状态，失败则清除 token
+     - 实现 `login`、`register`、`logout` 方法
+     - 导出 `useAuth` 自定义 Hook
+
+### 技术细节
+
+- axios 拦截器通过 `api.interceptors.request.use` 和 `api.interceptors.response.use` 配置
+- 使用 `useState` 和 `useEffect` 管理认证状态和自动加载
+- `localStorage` 作为持久化存储，页面刷新后认证状态不丢失
+- 使用 `useNavigate` 进行编程式导航
+
+### 遇到的问题
+
+- 页面刷新后认证状态恢复时，需要异步请求用户数据
+- 401 错误处理时，需要在拦截器中同步处理跳转
+- 通过 `window.location.href` 强制跳转解决
+
+### 明日计划
+
+- 与成员C（后端认证负责人）对接接口
+- 测试登录注册流程
+
+---
+
+## 日志3（第5天）：全局样式与响应式布局
+
+### 今日完成工作
+
+1. **创建全局样式文件**
+   - 创建 `src/styles/global.css`：
+     - 定义 CSS 变量（颜色、字体、边框）
+     - 全局样式（body 背景色）
+     - 通用组件样式（`.page-container`、`.card-shadow`、`.form-section`）
+     - 状态标签样式（`.status-draft`、`.status-submitted`）
+     - 响应式布局（`@media (max-width: 768px)`）
+
+2. **优化登录页面样式**
+   - 使用 `Card` 组件包裹登录表单
+   - 添加 `card-shadow` 类名统一卡片样式
+   - 登录卡片居中显示，最大宽度 400px
+
+3. **优化注册页面样式**
+   - 使用 `Card` 组件包裹注册表单
+   - 注册卡片居中显示，最大宽度 500px
+   - 添加 `Steps` 组件显示注册进度
+
+### 技术细节
+
+- CSS 变量使用 `:root` 定义，全局可用
+- 使用 `box-sizing: border-box` 统一盒模型
+- 响应式布局使用 CSS 媒体查询
+- Ant Design 的 `ConfigProvider` 可以自定义主题
+
+### 遇到的问题
+
+- CSS 变量在 Ant Design 组件中需要额外的覆盖
+- 通过 `!important` 或更具体的选择器解决样式优先级问题
+- 移动端适配时，Ant Design 的 `Table` 组件需要横向滚动
+
+### 明日计划
+
+- 与成员C联调认证接口
+- 测试一键测试登录功能
+
+---
+
+## 日志4（第7天）：认证接口联调与测试
+
+### 今日完成工作
+
+1. **与后端认证接口联调**
+   - 与成员C（后端认证负责人）对接 Spring Boot 后端 `/api/auth/*` 接口
+   - 测试接口列表：
+     - `POST /api/auth/register` — 用户注册
+     - `POST /api/auth/login` — 用户登录
+     - `POST /api/auth/demo-login` — 一键测试登录
+     - `GET /api/auth/profile` — 获取用户信息
+     - `POST /api/auth/sms` — 发送短信验证码
+     - `POST /api/auth/reset-password` — 重置密码
+   - 测试正常流程和异常流程
+
+2. **修复联调问题**
+   - 问题1：跨域请求失败（CORS）
+     - 后端 Spring Boot 已配置 CORS，前端无需额外处理
+   - 问题2：登录成功后 token 未正确存储
+     - 后端返回 `Result<User>` 结构，前端需访问 `res.data.data.token`
+     - 修改 `Login.js` 和 `useAuth.js` 中的 token 提取逻辑
+   - 问题3：页面刷新后认证状态丢失
+     - 检查 `useAuth` 中的 `useEffect` 是否正确加载 token
+
+3. **添加一键测试登录功能**
+   - 在 `Login.js` 中添加"一键测试登录"按钮
+   - 调用 `authAPI.demoLogin()` 接口
+   - 自动存储 token 并跳转首页
+
+### 技术细节
+
+- 使用浏览器开发者工具（F12）的 Network 面板查看请求详情
+- 检查 Request Headers 中的 Authorization 字段
+- 检查 Response 中的 token 和 user 数据
+- 使用 `console.log` 输出关键节点数据
+
+### 遇到的问题
+
+- 后端接口返回的数据格式与前端预期不一致
+- Spring Boot 使用 `Result<T>` 统一响应，前端需访问 `res.data.data`
+- 与成员C沟通后统一格式，前端修改数据提取逻辑
+
+### 明日计划
+
+- 完善全局错误处理
+- 准备最终测试
+
+---
+
+## 日志5（第9天）：全局错误处理与项目收尾
+
+### 今日完成工作
+
+1. **完善全局错误处理**
+   - 在 `api.js` 的响应拦截器中统一处理错误
+   - 在页面组件中添加错误边界
+   - 使用 `message.error` 显示错误提示
+
+2. **优化用户体验**
+   - 登录/注册按钮添加 loading 状态
+   - 表单提交时禁用按钮，防止重复提交
+   - 页面跳转时添加加载动画
+
+3. **代码审查与优化**
+   - 检查所有组件的 props 类型
+   - 优化 useEffect 依赖项，避免不必要的重渲染
+   - 提取重复逻辑为自定义 Hook
+
+4. **与团队成员联调**
+   - 与成员B确认 API 调用方式
+   - 与成员C确认接口稳定性
+   - 与成员D确认文件上传接口
+
+### 项目总结
+
+- 完成前端架构搭建，包括路由、认证、布局、样式
+- 实现完整的 API 服务层，统一错误处理
+- 与 Spring Boot 后端认证接口完成联调，测试通过
+- 为前端业务模块提供稳定的接口和组件基础
+
+---
+
+**成员A签名**：____________  
+**日期**：2026-06-11
