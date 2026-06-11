@@ -1,0 +1,455 @@
+# 成员A：前端架构与认证模块负责人 — 答辩手册
+
+## 一、模块概述
+
+我是本项目的**前端架构与认证模块负责人**，负责整个前端项目的架构搭建、路由配置、用户认证体系、全局样式和API服务层封装。
+
+### 我的职责范围
+
+1. **前端架构搭建**：React 18 项目创建、目录结构设计
+2. **路由配置**：React Router v6 路由系统搭建，包括嵌套路由、路由守卫
+3. **认证体系**：登录/注册/权限控制/自动恢复
+4. **全局样式**：CSS 变量、通用组件样式、响应式布局
+5. **API服务层**：axios 封装、请求/响应拦截器
+
+### 我负责的文件
+
+| 文件                                        | 作用                                         |
+| ------------------------------------------- | -------------------------------------------- |
+| `frontend/src/index.js`                     | 应用入口（ReactDOM渲染、Ant Design中文配置） |
+| `frontend/src/App.js`                       | 路由配置（所有路由规则）                     |
+| `frontend/src/components/Layout.js`         | 页面布局（导航栏+内容区+页脚）               |
+| `frontend/src/components/ProtectedRoute.js` | 路由守卫（未登录跳转）                       |
+| `frontend/src/hooks/useAuth.js`             | 认证状态管理（Context API）                  |
+| `frontend/src/services/api.js`              | API封装（axios+拦截器）                      |
+| `frontend/src/styles/global.css`            | 全局样式（CSS变量+响应式）                   |
+| `frontend/public/index.html`                | 入口HTML                                     |
+
+---
+
+## 二、技术细节详解
+
+### 1. 前端架构设计
+
+#### 技术选型
+
+- **框架**：React 18（函数组件 + Hooks）
+- **路由**：React Router v6（useRoutes、Outlet、Navigate）
+- **UI组件库**：Ant Design 5（ConfigProvider、Layout、Menu、Card）
+- **HTTP客户端**：axios（拦截器、统一错误处理）
+- **状态管理**：React Context API（useAuth Hook）
+- **构建工具**：Create React App
+
+#### 目录结构
+
+```
+frontend/src/
+├── components/          # 可复用组件
+├── pages/               # 页面组件
+├── hooks/               # 自定义Hooks
+├── services/            # API服务层
+├── utils/               # 工具函数
+├── styles/              # 样式文件
+├── App.js               # 路由配置
+└── index.js             # 应用入口
+```
+
+---
+
+### 2. 路由配置（App.js）
+
+#### 路由结构
+
+```javascript
+<Routes>
+  <Route path="/login" element={<Login />} />           // 公开路由
+  <Route path="/register" element={<Register />} />     // 公开路由
+  <Route path="/" element={<Layout />}>                 // 嵌套路由（需要认证）
+    <Route index element={<ProtectedRoute><Home /></ProtectedRoute>} />
+    <Route path="create" element={<ProtectedRoute><SubmissionCreate /></ProtectedRoute>} />
+    <Route path="detail/:id" element={<ProtectedRoute><SubmissionDetail /></ProtectedRoute>} />
+  </Route>
+</Routes>
+```
+
+#### 路由守卫实现
+
+```javascript
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div>加载中...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+```
+
+#### 技术要点
+
+- 使用 `BrowserRouter`（HTML5 History API），URL 无 `#` 号
+- 使用 `Outlet` 渲染子路由，实现嵌套布局
+- `ProtectedRoute` 通过条件渲染控制访问权限
+- 未登录用户访问受保护页面 → 自动跳转登录页
+
+---
+
+### 3. 认证体系（useAuth.js）
+
+#### 整体架构
+
+使用 **React Context API** 实现全局认证状态管理：
+
+```javascript
+const AuthContext = createContext(null);
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  
+  // 自动恢复登录状态
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      authAPI.getProfile()
+        .then(res => {
+          // Spring Boot 后端返回 Result<T>，需要提取 res.data.data
+          const user = res.data.data;
+          setUser(user);
+        })
+        .catch(() => localStorage.removeItem('token'))
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, []);
+  
+  // 登录方法
+  const login = async (phone, password) => {
+    const res = await authAPI.login({ phone, password });
+    // 提取 token：res.data.data.token（Result<T> 包装器）
+    const token = res.data.data.token;
+    const user = res.data.data;
+    localStorage.setItem('token', token);
+    setUser(user);
+    message.success('登录成功');
+    navigate('/');
+  };
+  
+  // 注册方法
+  const register = async (data) => {
+    const res = await authAPI.register(data);
+    const token = res.data.data.token;
+    const user = res.data.data;
+    localStorage.setItem('token', token);
+    setUser(user);
+    message.success('注册成功');
+    navigate('/');
+  };
+  
+  // 退出方法
+  const logout = () => {
+    localStorage.removeItem('token');
+    setUser(null);
+    message.success('已退出登录');
+    navigate('/login');
+  };
+  
+  return (
+    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+```
+
+#### 技术要点
+
+1. **自动恢复**：页面刷新后，从 `localStorage` 读取 token，自动获取用户信息
+2. **统一出口**：`login`、`register`、`logout` 三个方法封装所有认证操作
+3. **状态联动**：登录/注册成功后自动更新 `user` 状态，触发 UI 更新
+4. **导航联动**：登录成功后自动跳转到首页，退出后跳转登录页
+5. **数据提取**：Spring Boot 后端返回 `Result<T>`，前端需要 `res.data.data` 提取实际数据
+
+---
+
+### 4. API服务层（api.js）
+
+#### axios 实例配置
+
+```javascript
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+});
+```
+
+#### 请求拦截器（自动添加 token）
+
+```javascript
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  }
+);
+```
+
+#### 响应拦截器（统一错误处理）
+
+```javascript
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+#### 技术要点
+
+- `baseURL` 指向 Spring Boot 后端 `http://localhost:8080/api`
+- 请求拦截器自动从 `localStorage` 读取 token
+- 响应拦截器捕获 401 错误，自动清除 token 并跳转登录页
+- 前端发送的所有请求都会自动携带 `Authorization: Bearer <token>`
+
+---
+
+### 5. 全局样式（global.css）
+
+#### CSS 变量
+
+```css
+:root {
+  --primary-color: #1890ff;
+  --success-color: #52c41a;
+  --warning-color: #faad14;
+  --error-color: #f5222d;
+  --text-primary: #262626;
+  --text-secondary: #595959;
+  --border-color: #d9d9d9;
+  --bg-color: #f5f5f5;
+}
+```
+
+#### 响应式布局
+
+```css
+@media (max-width: 768px) {
+  .page-container { padding: 12px; }
+  .card-shadow { padding: 16px; }
+}
+```
+
+---
+
+## 三、核心代码讲解
+
+### 1. 路由守卫（ProtectedRoute.js）
+
+```javascript
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div>加载中...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+```
+
+**讲解**：
+
+- 使用 `useAuth` 获取认证状态
+- `loading` 为 true 时显示加载中
+- `user` 为 null 时跳转到登录页
+- 否则渲染子组件
+
+### 2. 认证 Hook（useAuth.js）
+
+```javascript
+useEffect(() => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    authAPI.getProfile()
+      .then(res => {
+        // Spring Boot 后端返回 Result<T>
+        const user = res.data.data;
+        setUser(user);
+      })
+      .catch(() => localStorage.removeItem('token'))
+      .finally(() => setLoading(false));
+  } else {
+    setLoading(false);
+  }
+}, []);
+```
+
+**讲解**：
+
+- 页面刷新时自动执行
+- 从 localStorage 读取 token
+- 调用后端 Spring Boot 接口获取用户信息
+- 后端返回 `Result<T>`，需要 `res.data.data` 提取实际数据
+- 成功则设置 user 状态，失败则清除 token
+
+### 3. API 请求拦截器（api.js）
+
+```javascript
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  }
+);
+```
+
+**讲解**：
+
+- 每个请求发送前自动执行
+- 从 localStorage 读取 token
+- 添加到请求头的 Authorization 字段
+- 格式：Bearer + 空格 + token
+- 后端 JwtInterceptor 验证 token 并提取 userId
+
+---
+
+## 四、接口说明
+
+### 我调用的后端接口（Spring Boot）
+
+| 接口                       | 方法 | 作用           | 调用位置               |
+| -------------------------- | ---- | -------------- | ---------------------- |
+| `/api/auth/login`          | POST | 用户登录       | useAuth.js login       |
+| `/api/auth/register`       | POST | 用户注册       | useAuth.js register    |
+| `/api/auth/demo-login`     | POST | 一键测试登录   | Login.js               |
+| `/api/auth/profile`        | GET  | 获取用户信息   | useAuth.js useEffect   |
+| `/api/auth/sms`            | POST | 发送短信验证码 | Login.js / Register.js |
+| `/api/auth/reset-password` | POST | 重置密码       | 忘记密码页面           |
+
+### 接口参数和返回
+
+#### 登录接口（Spring Boot 后端）
+
+```javascript
+// 请求
+{ phone: "13800138000", password: "123456" }
+
+// 响应（Spring Boot Result<T> 格式）
+{
+  code: 200,
+  message: "登录成功",
+  data: {
+    id: 1,
+    phone: "13800138000",
+    realName: "测试用户",
+    token: "eyJhbGciOiJIUzI1NiJ9..."
+  }
+}
+```
+
+#### 获取用户信息接口
+
+```javascript
+// 请求头
+Authorization: Bearer <token>
+
+// 响应
+{
+  code: 200,
+  message: "操作成功",
+  data: {
+    id: 1,
+    phone: "13800138000",
+    realName: "测试用户",
+    idType: "id_card",
+    idNumber: "110101..."
+  }
+}
+```
+
+---
+
+## 五、遇到的问题与解决方案
+
+### 问题1：页面刷新后认证状态丢失
+
+**原因**：React 状态是内存中的，刷新后重置
+**解决**：使用 `localStorage` 持久化 token，页面刷新后自动恢复
+
+### 问题2：后端响应数据格式不匹配
+
+**原因**：Spring Boot 后端返回 `Result<T>`，前端直接访问 `res.data` 获取不到业务数据
+**解决**：前端访问 `res.data.data` 提取实际数据
+
+### 问题3：后端未返回 token
+
+**原因**：后端 `UserService` 生成了 token，但没有设置到 User 实体中返回
+**解决**：在 User 实体中添加 `token` 字段，登录时设置 `user.setToken(token)`
+
+### 问题4：401 错误处理时跳转异常
+
+**原因**：在 axios 拦截器中使用 `useNavigate` 会报错
+**解决**：使用 `window.location.href` 强制跳转
+
+### 问题5：CORS 预检请求被拦截
+
+**原因**：后端 JwtInterceptor 拦截了 OPTIONS 请求，导致前端无法发送实际请求
+**解决**：后端 JwtInterceptor 中放行 OPTIONS 请求
+
+### 问题6：路由嵌套时 Outlet 不渲染
+
+**原因**：对 React Router v6 的 Outlet 机制不熟悉
+**解决**：查阅 React Router 文档，确认 Outlet 必须配合子路由使用
+
+### 问题7：Ant Design 5 的 Menu API 变化
+
+**原因**：Ant Design 5 的 Menu 使用 `items` 属性而非 `Menu.Item` 子组件
+**解决**：查阅迁移文档，修改为 `items` 数组格式
+
+---
+
+## 六、答辩要点
+
+### 1. 开场（30秒）
+
+"我是前端架构与认证模块负责人，负责整个前端项目的架构搭建、路由配置、认证体系、全局样式和API服务层封装。"
+
+### 2. 技术亮点（1分钟）
+
+- **Context API 状态管理**：轻量、高效，无需 Redux
+- **自动恢复登录**：刷新页面不丢失登录状态
+- **axios 拦截器**：自动携带 token，统一错误处理
+- **路由守卫**：未登录自动跳转，保护受保护页面
+- **响应式布局**：适配移动端，使用 CSS 变量和媒体查询
+- **数据适配**：Spring Boot 后端返回 `Result<T>`，前端 `res.data.data` 提取数据
+
+### 3. 核心代码展示（1分钟）
+
+展示 `useAuth.js` 中的自动恢复逻辑和 `api.js` 中的拦截器配置
+
+### 4. 问题解决（1分钟）
+
+讲述 401 错误处理时遇到的问题，以及使用 `window.location.href` 的解决方案
+
+### 5. 总结（30秒）
+
+"我的模块为整个前端提供了稳定的基础架构，包括路由、认证、样式和API通信，确保了前端业务模块可以专注于业务逻辑。"
+
+---
+
+**答辩时长**：约 4 分钟
+
+---
+
+**成员A签名**：____________  
+**日期**：2026-06-11
