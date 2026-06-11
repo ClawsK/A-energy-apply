@@ -1,0 +1,249 @@
+# 成员B：前端业务模块负责人 — 工作日志
+
+## 基本信息
+
+- **姓名**：[成员B姓名]
+- **职责**：申报列表页面、创建申报页面、申报详情页面、证件号码验证、申报状态管理
+- **负责文件**：Home.js、SubmissionCreate.js、SubmissionDetail.js、idValidation.js
+
+---
+
+## 日志1（第2天）：证件号码验证工具开发
+
+### 今日完成工作
+
+1. **分析证件号码验证需求**
+   - 系统需要支持5种证件类型：
+     - 居民身份证（18位）
+     - 护照（E/P+8位数字）
+     - 港澳居民来往内地通行证（香港身份证）
+     - 澳门居民身份证（1位数字+6位数字+1位数字）
+     - 台湾居民来往大陆通行证（8位数字）
+
+2. **创建证件号码验证工具**
+   - 创建 `src/utils/idValidation.js`：
+     - `validateChineseID(id)`：验证18位身份证，使用加权因子计算校验码
+     - `validatePassport(id)`：验证护照格式
+     - `validateHKID(id)`：验证香港身份证格式+校验码
+     - `validateMacauID(id)`：验证澳门身份证格式
+     - `validateTaiwanPass(id)`：验证台湾通行证格式
+     - `validateID(id, type)`：通用验证入口
+     - `IDTypeOptions`：证件类型选项数组
+
+### 技术细节
+
+- 身份证校验算法基于国家标准 GB 11643-1999
+- 使用正则表达式进行初步格式验证
+- 使用数学计算进行校验码验证
+- 所有函数返回布尔值
+
+### 遇到的问题
+
+- 香港身份证的校验码算法复杂，需要仔细计算字母和数字的加权
+- 通过查找相关资料和测试验证解决
+
+### 明日计划
+
+- 开发首页（申报列表）页面
+- 实现状态标签和状态管理
+
+---
+
+## 日志2（第4天）：首页（申报列表）开发
+
+### 今日完成工作
+
+1. **创建首页组件**
+   - 创建 `src/pages/Home.js`：
+     - 使用 `useState` 管理状态：submissions、loading、isDeadlinePassed
+     - 使用 `useEffect` 在组件挂载时加载申报列表
+
+2. **实现申报列表加载**
+   - 调用 `submissionAPI.getList()` 获取当前用户的申报列表
+   - 处理 Spring Boot 后端返回的 `Result<T>` 结构：`res.data.data`
+   - 按创建时间倒序排列
+   - 处理加载中、加载成功、加载失败状态
+   - 空数据时显示 `Empty` 组件
+
+3. **实现状态显示**
+   - 创建 `getStatusTag` 函数：
+     - `draft` → 橙色标签 "未提交"
+     - `submitted` → 绿色标签 "已提交"
+
+4. **实现操作按钮**
+   - 根据状态显示不同操作：
+     - 未提交（draft）：编辑按钮、提交按钮、删除按钮
+     - 已提交（submitted）：查看按钮、撤回按钮
+     - 截止时间已到达：仅查看按钮
+
+5. **修复字段映射**
+   - 将 `dataIndex: 'createdAt'` 改为 `dataIndex: 'createTime'`（适配 Java 后端）
+   - 将 `record._id` 改为 `record.id`（适配 Java Long 类型）
+   - 将 `rowKey="_id"` 改为 `rowKey="id"`
+
+### 技术细节
+
+- 使用 `Table` 组件展示列表，配置 columns 数组
+- 使用 `Card` 组件包裹页面
+- 使用 `Modal.confirm` 实现确认对话框
+- 使用 `message.success` 和 `message.error` 显示操作结果
+
+### 遇到的问题
+
+- 状态切换后需要刷新列表，但直接修改状态会导致UI不同步
+- 解决方案：操作成功后重新调用 `loadSubmissions()` 刷新数据
+- 后端返回的字段名与前端不一致（`createTime` vs `createdAt`）
+- 解决方案：统一使用 Java 后端字段名
+
+### 明日计划
+
+- 开发创建申报页面（三步表单）
+- 实现申报类型选择和文件上传
+
+---
+
+## 日志3（第6天）：创建申报页面开发
+
+### 今日完成工作
+
+1. **创建创建申报页面**
+   - 创建 `src/pages/SubmissionCreate.js`：
+     - 使用 `useState` 管理当前步骤（currentStep）
+     - 使用 `Form` 的 `useForm` 创建表单实例
+     - 使用 `Steps` 组件显示三步流程
+
+2. **实现三步表单**
+   - 第一步：选择申报项目（category）
+   - 第二步：基本信息（applicantType、title、description）
+   - 第三步：详细信息（workLink、workFiles、recommendUnit、sealFile）
+
+3. **实现文件上传**
+   - 使用 `Upload` 组件
+   - 配置完整 URL：`action="http://localhost:8080/api/upload"`
+   - 使用 `normFile` 函数处理文件列表
+
+4. **解决字段丢失问题**
+   - 初始使用 `preserve` 属性但无效
+   - 最终方案：所有步骤的字段始终渲染在 DOM 中，使用 CSS `display: none` 隐藏非当前步骤
+   - 这样 `form.getFieldsValue(true)` 可以获取所有字段的值
+
+### 技术细节
+
+- 使用 `Steps` 组件的 `current` 属性控制步骤
+- 使用 `Form` 的 `layout="vertical"` 垂直布局
+- 使用 `Radio.Button` 实现单选按钮组
+- 使用 `Upload` 的 `listType="text"` 显示文件列表
+
+### 遇到的问题
+
+- 表单字段动态显示时，切换步骤后之前的字段值丢失
+- 初始使用 `preserve` 属性无效
+- 最终解决方案：所有字段始终渲染，使用 CSS 隐藏
+- 文件上传地址需使用完整 URL（`http://localhost:8080/api/upload`）
+
+### 明日计划
+
+- 开发申报详情页面
+- 实现查看和编辑功能
+
+---
+
+## 日志4（第8天）：申报详情页面开发
+
+### 今日完成工作
+
+1. **创建申报详情页面**
+   - 创建 `src/pages/SubmissionDetail.js`：
+     - 使用 `useParams` 获取路由参数 `id`
+     - 使用 `useState` 管理 loading 和 submission 状态
+     - 使用 `Form` 的 `useForm` 创建表单实例
+
+2. **实现申报详情加载**
+   - 组件挂载时调用 `submissionAPI.getDetail(id)`
+   - 处理 Spring Boot 后端返回的 `Result<T>` 结构：`res.data.data`
+   - 成功则设置 `submission` 状态和表单值
+   - 失败则显示错误提示
+
+3. **实现分节展示**
+   - 使用 `div` 和 `className="form-section"` 分节
+   - 项目信息、个人信息、推荐信息、作品信息
+
+4. **实现编辑功能**
+   - 使用 `Form` 的 `disabled` 属性控制编辑状态
+   - 未提交（draft）：表单可编辑
+   - 已提交（submitted）：表单禁用（只读）
+
+### 技术细节
+
+- 使用 `Divider` 分隔不同节
+- 使用 `Input` 的 `disabled` 属性控制只读
+- 使用 `Tag` 的 `color` 属性显示不同状态
+- 响应数据提取：`const data = res.data.data`
+
+### 遇到的问题
+
+- 表单值回显时，某些字段可能为空
+- 使用 `form.setFieldsValue` 设置时，空字段不显示
+- 通过 `initialValues` 或在 `useEffect` 中设置解决
+
+### 明日计划
+
+- 与成员D联调申报CRUD接口
+- 测试申报完整流程
+
+---
+
+## 日志5（第10天）：业务接口联调与项目收尾
+
+### 今日完成工作
+
+1. **与后端业务接口联调**
+   - 与成员D（后端业务负责人）对接 Spring Boot 后端 `/api/submissions/*` 接口
+   - 测试接口列表：
+     - `POST /api/submissions` — 创建申报
+     - `GET /api/submissions` — 获取列表
+     - `GET /api/submissions/:id` — 获取详情
+     - `PUT /api/submissions/:id` — 更新申报
+     - `DELETE /api/submissions/:id` — 删除申报
+     - `POST /api/submissions/:id/submit` — 提交申报
+     - `POST /api/submissions/:id/withdraw` — 撤回申报
+
+2. **测试完整业务流程**
+   - 流程1：创建 → 编辑 → 提交 → 查看
+   - 流程2：创建 → 删除
+   - 流程3：创建 → 提交 → 撤回 → 编辑 → 提交
+
+3. **修复联调问题**
+   - 问题1：创建申报后列表未刷新
+     - 解决：在 `Home.js` 中重新调用 `loadSubmissions()`
+   - 问题2：后端字段名与前端不匹配
+     - 解决：统一使用 Java 后端字段名（`createTime`、`id`）
+   - 问题3：三步表单字段丢失
+     - 解决：所有字段始终渲染在 DOM 中，使用 CSS 隐藏
+   - 问题4：文件上传路径不正确
+     - 解决：使用完整 URL `http://localhost:8080/api/upload`
+
+4. **优化用户体验**
+   - 表单验证实时提示
+   - 操作按钮 loading 状态
+   - 表单提交时禁用按钮
+
+5. **编写技术文档**
+   - 整理申报业务流程图
+   - 记录状态流转规则
+   - 记录证件验证规则
+   - 记录字段映射规则
+
+### 项目总结
+
+- 完成证件号码验证工具（5种证件类型）
+- 完成首页（申报列表）页面
+- 完成创建申报页面（三步表单）
+- 完成申报详情页面（查看/编辑）
+- 与 Spring Boot 后端业务接口完成联调，测试通过
+- 实现完整的申报业务流程
+
+---
+
+**成员B签名**：____________  
+**日期**：2026-06-11
