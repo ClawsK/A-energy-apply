@@ -1,0 +1,357 @@
+# 成员D：后端业务与文件上传负责人 — 工作日志
+
+## 基本信息
+
+- **姓名**：[成员D姓名]
+- **职责**：后端业务接口（申报CRUD）、申报状态流转（提交/撤回）、文件上传（单文件/多文件）、项目文档编写
+- **负责文件**：SubmissionController.java、UploadController.java、SubmissionService.java、SubmissionMapper.java、Submission.java、SubmissionDTO.java、Result.java、GlobalExceptionHandler.java、所有项目文档
+
+---
+
+## 日志1（第2天）：申报数据模型设计与Mapper开发
+
+### 今日完成工作
+
+1. **设计申报数据模型**
+   - 分析业务需求，确定申报字段：
+     - 基本信息：id、userId、category、title、description
+     - 申报类型：applicantType、recommendUnit、sealFile
+     - 作品信息：workLink、workFiles
+     - 身份信息：idCard、idCardImage
+     - 状态管理：status、submitTime、createTime、updateTime
+
+2. **创建申报实体类**
+   - 创建 `Submission.java`：
+     - 使用 Lombok 的 `@Data` 注解
+     - 字段类型：Long（ID）、String（字符串）、LocalDateTime（时间）
+     - workFiles 使用 String 存储 JSON 数组（简化处理）
+
+3. **创建申报DTO**
+   - 创建 `SubmissionDTO.java`：
+     - 使用 `@NotBlank` 注解进行验证
+     - 字段：category、title、description、applicantType 等
+     - 用于接收前端请求参数
+
+4. **创建申报Mapper**
+   - 创建 `SubmissionMapper.java`：
+     - 使用 `@Mapper` 注解
+     - 使用注解方式配置 SQL：
+       - `@Insert`：插入申报
+       - `@Select`：根据ID查询、根据用户ID查询列表
+       - `@Update`：更新申报、更新状态
+       - `@Delete`：删除申报
+     - 使用 `@Options(useGeneratedKeys = true, keyProperty = "id")` 获取自增ID
+
+5. **创建统一响应结果**
+   - 创建 `Result.java`：
+     - 使用泛型 `<T>` 支持任意类型数据
+     - 静态方法：`success()`、`success(T data)`、`error(...)`
+     - 统一响应格式：code、message、data
+
+### 技术细节
+
+- MyBatis 注解方式简洁，适合简单 CRUD
+- `@Mapper` 注解让 Spring Boot 自动扫描
+- `map-underscore-to-camel-case: true` 自动映射命名
+- 使用 `@Options` 获取数据库自增 ID
+
+### 遇到的问题
+
+- 申报字段较多，需要仔细设计
+- 通过分析需求文档确定字段
+- workFiles 使用 JSON 字符串存储，简化数据库设计
+- 如果需要更规范，可以使用关联表
+
+### 明日计划
+
+- 实现申报Service业务逻辑
+- 实现申报CRUD接口
+
+---
+
+## 日志2（第4天）：申报Service与Controller开发
+
+### 今日完成工作
+
+1. **实现申报Service**
+   - 创建 `SubmissionService.java`：
+     - 使用 `@Service` 注解
+     - 使用 `@Autowired` 注入 `SubmissionMapper`
+     - 实现 `create(SubmissionDTO, Long userId)`：
+       - 将 DTO 转换为实体
+       - 设置默认状态（status = "draft"）
+       - 设置创建时间和更新时间
+       - 调用 `SubmissionMapper.insert`
+       - 返回 Result.success
+     - 实现 `getList(Long userId)`：
+       - 调用 `SubmissionMapper.selectByUserId`
+       - 按创建时间倒序排列
+       - 返回 Result.success
+     - 实现 `getDetail(Long id, Long userId)`：
+       - 查询申报
+       - 检查存在性和归属（防止越权）
+       - 返回 Result.success 或 Result.error(404)
+     - 实现 `update(Long id, SubmissionDTO, Long userId)`：
+       - 查询申报并检查
+       - 检查状态（只有 draft 可编辑）
+       - 更新字段和更新时间
+       - 调用 `SubmissionMapper.update`
+       - 返回 Result.success
+     - 实现 `delete(Long id, Long userId)`：
+       - 查询申报并检查
+       - 检查状态（只有 draft 可删除）
+       - 调用 `SubmissionMapper.deleteById`
+       - 返回 Result.success
+
+2. **实现申报Controller**
+   - 创建 `SubmissionController.java`：
+     - 使用 `@RestController` 注解
+     - 使用 `@RequestMapping("/submissions")` 设置基础路径
+     - 使用 `@Validated` 启用验证
+     - 使用 `@Autowired` 注入 `SubmissionService`
+     - 实现 `create`：接收 `@Valid @RequestBody SubmissionDTO`
+     - 实现 `getList`：从 `HttpServletRequest` 获取 userId
+     - 实现 `getDetail`：接收 `@PathVariable Long id`
+     - 实现 `update`：接收 `@PathVariable Long id` 和 `@RequestBody SubmissionDTO`
+     - 实现 `delete`：接收 `@PathVariable Long id`
+     - 所有方法都从 `HttpServletRequest` 获取 userId（由拦截器设置）
+
+3. **实现全局异常处理**
+   - 创建 `GlobalExceptionHandler.java`：
+     - 使用 `@ControllerAdvice` 注解
+     - 处理参数验证异常
+     - 处理通用异常
+     - 返回统一的 Result.error 响应
+
+### 技术细节
+
+- `@Transactional` 注解确保数据库操作的原子性
+- `@PathVariable` 从 URL 路径获取参数
+- `@RequestBody` 从请求体获取 JSON 数据
+- `@Valid` 触发 DTO 中的验证规则
+- `HttpServletRequest.getAttribute("userId")` 获取拦截器设置的 userId
+
+### 遇到的问题
+
+- 状态检查逻辑需要仔细设计
+- 通过 if 判断 status 字段，返回不同错误信息
+- 越权访问需要处理
+- 通过检查 userId 是否匹配解决
+
+### 明日计划
+
+- 实现申报提交和撤回接口
+- 实现文件上传接口
+
+---
+
+## 日志3（第6天）：申报状态流转与文件上传
+
+### 今日完成工作
+
+1. **实现提交申报接口**
+
+   - 在 `SubmissionService` 中添加 `submit` 方法：
+     - 查询申报并检查存在性和归属
+     - 检查状态（只有 draft 可提交）
+     - 检查信息完整性（title、description、category 不能为空）
+     - 更新状态为 submitted
+     - 设置提交时间
+     - 调用 `SubmissionMapper.updateStatus`
+     - 返回 Result.success
+
+2. **实现撤回申报接口**
+
+   - 在 `SubmissionService` 中添加 `withdraw` 方法：
+     - 查询申报并检查存在性和归属
+     - 检查状态（只有 submitted 可撤回）
+     - 更新状态为 draft
+     - 清除提交时间
+     - 调用 `SubmissionMapper.updateStatus`
+     - 返回 Result.success
+
+3. **实现文件上传接口**
+
+   - 创建 `UploadController.java`：
+     - 使用 `@RestController` 注解
+     - 使用 `@RequestMapping("/upload")` 设置基础路径
+     - 单文件上传：
+       - 使用 `@RequestParam("file") MultipartFile file`
+       - 检查文件是否为空
+       - 生成唯一文件名（UUID + 扩展名）
+       - 保存到 `uploads/` 目录
+       - 返回文件名
+     - 多文件上传：
+       - 使用 `@RequestParam("files") MultipartFile[] files`
+       - 遍历文件，逐个保存
+       - 返回文件名列表
+
+4. **配置文件上传**
+
+   - 在 `application.yml` 中添加：
+
+     ```yaml
+     spring:
+       servlet:
+         multipart:
+           enabled: true
+           max-file-size: 50MB
+           max-request-size: 100MB
+     ```
+
+### 技术细节
+
+- 状态流转：draft → submitted → draft
+- 提交时记录时间，撤回时清除时间
+- `MultipartFile` 是 Spring 的文件上传抽象
+- `UUID.randomUUID()` 生成唯一文件名
+- `file.transferTo(File dest)` 保存文件
+
+### 遇到的问题
+
+- 文件上传路径需要前端可访问
+- 使用相对路径 `/uploads/文件名`，前端拼接完整 URL
+- 大文件上传可能导致内存溢出
+- 通过 `multipart.max-file-size` 限制文件大小
+- 上传目录需要写权限
+- 确保 Node.js 进程对目录有读写权限
+
+### 明日计划
+
+- 与前端联调业务接口
+- 测试完整申报流程
+
+---
+
+## 日志4（第8天）：业务接口联调与文件上传测试
+
+### 今日完成工作
+
+1. **与前端业务模块联调**
+   - 与成员B（前端业务负责人）对接 `/api/submissions/*` 和 `/api/upload/*` 接口
+   - 使用 Postman 测试所有接口
+
+2. **测试完整申报流程**
+   - 流程1：创建 → 编辑 → 提交 → 查看
+   - 流程2：创建 → 删除
+   - 流程3：创建 → 提交 → 撤回 → 编辑 → 提交
+   - 测试边界条件：
+     - 未登录访问：返回 401
+     - 访问其他用户的申报：返回 404
+     - 编辑已提交的申报：返回 400
+     - 删除已提交的申报：返回 400
+     - 提交不完整的申报：返回 400
+
+3. **测试文件上传**
+   - 单文件上传：
+     - 上传 JPEG 图片：成功
+     - 上传 PNG 图片：成功
+     - 上传 PDF 文档：成功
+     - 上传超出 50MB 的文件：失败，返回 413
+   - 多文件上传：
+     - 上传 3 个文件：成功
+     - 上传 6 个文件：失败，最多 5 个
+
+4. **修复联调问题**
+   - 问题1：前端创建申报后，列表未显示
+     - 原因：后端返回的 `id` 与前端使用的 `_id` 字段名不一致
+     - 解决：统一使用 `id` 作为标识字段
+   - 问题2：文件上传后，前端无法显示
+     - 原因：文件路径不正确
+     - 解决：使用相对路径，前端拼接完整 URL
+   - 问题3：前端响应数据格式不匹配
+     - 原因：后端返回 `Result<T>`，前端直接访问 `res.data`
+     - 解决：前端访问 `res.data.data`
+   - 问题4：前端字段名不匹配
+     - 原因：MongoDB 使用 `createdAt`，Java 使用 `createTime`
+     - 解决：前端统一使用 Java 后端字段名
+
+5. **优化接口响应**
+   - 统一响应格式：Result 泛型对象
+   - 确保所有接口都返回 JSON 格式
+
+### 技术细节
+
+- 使用 Postman 的 Collection 功能组织测试用例
+- 使用 Environment 变量管理基础 URL
+- 使用 `console.log` 输出请求参数和响应数据
+
+### 遇到的问题
+
+- 前端发送的字段名与后端预期不一致
+- 通过统一命名规范解决（如 `recommendUnit` 而非 `recommend_unit`）
+- 文件上传的 Content-Type 需要 `multipart/form-data`
+- 前端使用 `FormData` 对象，后端使用 `MultipartFile` 接收
+- 前端响应数据需要两层 `data` 提取
+
+### 明日计划
+
+- 编写项目文档
+- 整理技术手册
+
+---
+
+## 日志5（第10天）：文档编写与项目收尾
+
+### 今日完成工作
+
+1. **编写项目文档**
+   - 创建 `docs/项目简介.md`：
+     - 项目概述
+     - 技术栈
+     - 项目结构
+     - 核心功能
+     - 启动方式
+     - 团队成员
+
+2. **编写项目手册**
+   - 创建 `docs/项目手册.md`：
+     - 详细文件说明
+     - 技术细节
+     - 接口文档
+     - 配置说明
+     - 遇到的问题及解决方案
+
+3. **编写团队分工说明**
+   - 创建 `docs/分工与职责说明.md`：
+     - 4人职责分配
+     - 负责文件清单
+     - 协作关系图
+     - 接口对接关系
+
+4. **编写成员日志**
+   - 为4位成员分别编写工作日志
+   - 每位成员5次日志，记录每日工作、技术细节、遇到的问题
+
+5. **编写答辩手册**
+   - 为4位成员分别编写答辩手册
+   - 包含：模块概述、技术细节、代码说明、接口说明、遇到的问题
+
+### 技术细节
+
+- 使用 Markdown 格式编写文档
+- 使用代码块展示关键代码
+- 使用表格展示接口信息
+- 使用列表展示功能点
+
+### 遇到的问题
+
+- 文档内容需要与技术实现一致
+- 通过对照代码和实际运行结果确保准确性
+- 文档格式需要统一
+- 使用 Markdown 标准格式，确保可读性
+
+### 项目总结
+
+- 完成申报CRUD接口（创建、查询、更新、删除）
+- 完成申报状态流转（提交、撤回）
+- 完成文件上传接口（单文件、多文件）
+- 与前端业务模块完成联调，测试通过
+- 实现完整的申报业务流程
+- 编写项目文档、手册、分工说明、日志、答辩手册
+- 为项目交付和答辩提供完整的技术支持
+
+---
+
+**成员D签名**：____________  
+**日期**：2026-06-11
