@@ -1,0 +1,704 @@
+# 成员C：后端认证与数据负责人 — 答辩手册
+
+## 一、模块概述
+
+我是本项目的**后端认证与数据负责人**，负责 Spring Boot 后端架构搭建、Maven 配置、用户认证体系、JWT 认证、密码加密、MyBatis 数据访问层，以及一键测试登录功能。
+
+### 我的职责范围
+
+1. **Spring Boot 项目搭建**：Maven 依赖配置、启动类、application.yml
+2. **用户认证体系**：注册、登录、JWT 认证、密码加密（BCrypt）
+3. **一键测试登录**：自动创建测试账号，无需注册
+4. **用户数据管理**：MyBatis + H2 数据库（开发）/ MySQL（生产）
+5. **全局异常处理**：统一异常处理（@ControllerAdvice）
+
+### 我负责的文件
+
+| 文件                                                         | 作用                                          |
+| ------------------------------------------------------------ | --------------------------------------------- |
+| `backend/pom.xml`                                            | Maven 依赖配置（Spring Boot + MyBatis + JWT） |
+| `backend/src/main/java/com/submission/SubmissionApplication.java` | Spring Boot 启动类                            |
+| `backend/src/main/java/com/submission/controller/AuthController.java` | 认证接口（注册/登录/一键测试登录）            |
+| `backend/src/main/java/com/submission/service/UserService.java` | 用户业务逻辑（@Service）                      |
+| `backend/src/main/java/com/submission/mapper/UserMapper.java` | 用户数据访问（MyBatis 注解）                  |
+| `backend/src/main/java/com/submission/entity/User.java`      | 用户实体类（Lombok @Data）                    |
+| `backend/src/main/java/com/submission/util/JwtUtil.java`     | JWT 工具类（生成/验证/解析）                  |
+| `backend/src/main/java/com/submission/util/PasswordUtil.java` | 密码工具类（BCrypt 加密）                     |
+| `backend/src/main/java/com/submission/interceptor/JwtInterceptor.java` | JWT 认证拦截器（HandlerInterceptor）          |
+| `backend/src/main/java/com/submission/config/WebConfig.java` | Web 配置（跨域 + 拦截器注册）                 |
+| `backend/src/main/resources/application.yml`                 | Spring Boot 应用配置                          |
+| `backend/src/main/resources/schema.sql`                      | H2 数据库初始化脚本                           |
+
+---
+
+## 二、技术细节详解
+
+### 1. Spring Boot 项目搭建
+
+#### Maven 依赖（pom.xml）
+
+```xml
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>2.7.18</version>
+</parent>
+
+<dependencies>
+    <!-- Spring Boot Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    
+    <!-- MyBatis Spring Boot -->
+    <dependency>
+        <groupId>org.mybatis.spring.boot</groupId>
+        <artifactId>mybatis-spring-boot-starter</artifactId>
+        <version>2.3.2</version>
+    </dependency>
+    
+    <!-- H2 Database -->
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+    
+    <!-- JWT -->
+    <dependency>
+        <groupId>io.jsonwebtoken</groupId>
+        <artifactId>jjwt-api</artifactId>
+        <version>0.11.5</version>
+    </dependency>
+    
+    <!-- Spring Security Crypto (BCryptPasswordEncoder) -->
+    <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-crypto</artifactId>
+    </dependency>
+    
+    <!-- Lombok -->
+    <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>1.18.30</version>
+        <scope>compile</scope>
+    </dependency>
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.10.1</version>
+            <configuration>
+                <source>1.8</source>
+                <target>1.8</target>
+                <annotationProcessorPaths>
+                    <path>
+                        <groupId>org.projectlombok</groupId>
+                        <artifactId>lombok</artifactId>
+                        <version>1.18.30</version>
+                    </path>
+                </annotationProcessorPaths>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+```
+
+#### 技术要点
+
+- 使用 `spring-boot-starter-parent` 作为 parent，自动管理依赖版本
+- H2 内存数据库适合开发，无需安装 MySQL
+- MyBatis Spring Boot Starter 自动配置 MyBatis
+- Lombok 简化实体类代码，自动生成 getter/setter
+- **重要**：Lombok 需要配置 `annotationProcessorPaths` 才能生效
+- **重要**：`spring-security-crypto` 提供 BCryptPasswordEncoder
+
+---
+
+### 2. JWT 认证体系
+
+#### JWT 工具类（JwtUtil.java）
+
+```java
+@Component
+public class JwtUtil {
+    
+    @Value("${jwt.secret}")
+    private String secret;
+    
+    @Value("${jwt.expiration}")
+    private Long expiration;
+    
+    public String generateToken(Long userId) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + expiration);
+        
+        return Jwts.builder()
+                .setSubject(String.valueOf(userId))
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSecretKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+    
+    public Long getUserIdFromToken(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(getSecretKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        return Long.parseLong(claims.getSubject());
+    }
+    
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parserBuilder().setSigningKey(getSecretKey()).build().parseClaimsJws(token);
+            return true;
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+    
+    private SecretKey getSecretKey() {
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+}
+```
+
+#### JWT 认证拦截器（JwtInterceptor.java）
+
+```java
+@Component
+public class JwtInterceptor implements HandlerInterceptor {
+    
+    @Autowired
+    private JwtUtil jwtUtil;
+    
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        // 放行 OPTIONS 预检请求（CORS）
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+        
+        String authHeader = request.getHeader("Authorization");
+        
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":401,\"message\":\"未提供认证令牌\"}");
+            return false;
+        }
+        
+        String token = authHeader.substring(7);
+        
+        if (!jwtUtil.validateToken(token)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":401,\"message\":\"令牌无效或已过期\"}");
+            return false;
+        }
+        
+        Long userId = jwtUtil.getUserIdFromToken(token);
+        request.setAttribute("userId", userId);
+        
+        return true;
+    }
+}
+```
+
+#### Web 配置（WebConfig.java）
+
+```java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    
+    @Autowired
+    private JwtInterceptor jwtInterceptor;
+    
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOrigins("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .maxAge(3600);
+    }
+    
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(jwtInterceptor)
+                .addPathPatterns("/**")
+                .excludePathPatterns("/auth/**");
+    }
+}
+```
+
+#### 技术要点
+
+1. **JWT 生成**：使用 `jjwt` 库，HS256 算法签名，包含 userId 和过期时间
+2. **JWT 验证**：解析 token 签名，检查过期时间
+3. **拦截器**：实现 `HandlerInterceptor` 接口，在 `preHandle` 中验证 token
+4. **放行 OPTIONS**：CORS 预检请求直接放行，避免前端无法发送实际请求
+5. **WebMvcConfigurer**：配置 CORS 和拦截器注册
+6. **CORS**：允许所有来源，解决前端跨域问题
+7. **拦截器排除**：`/auth/**` 路径不需要认证（登录、注册接口）
+
+---
+
+### 3. 密码加密（BCrypt）
+
+#### 密码工具类（PasswordUtil.java）
+
+```java
+@Component
+public class PasswordUtil {
+    
+    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    
+    public String encode(String password) {
+        return encoder.encode(password);
+    }
+    
+    public boolean matches(String rawPassword, String encodedPassword) {
+        return encoder.matches(rawPassword, encodedPassword);
+    }
+}
+```
+
+#### 技术要点
+
+1. **不可逆**：哈希是单向的，无法从哈希值反推密码
+2. **Salt**：每次哈希生成随机 salt，相同密码哈希值不同
+3. **Salt Rounds**：10 轮（默认值），安全性与性能平衡
+4. **防时序攻击**：比对时间恒定，防止通过时间差猜测密码
+
+---
+
+### 4. MyBatis 数据访问层
+
+#### 用户 Mapper（UserMapper.java）
+
+```java
+@Mapper
+public interface UserMapper {
+    
+    @Insert("INSERT INTO t_user (phone, password, real_name, id_type, id_number, status, create_time, last_login_time) " +
+            "VALUES (#{phone}, #{password}, #{realName}, #{idType}, #{idNumber}, #{status}, #{createTime}, #{lastLoginTime})")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    int insert(User user);
+    
+    @Select("SELECT * FROM t_user WHERE id = #{id}")
+    User selectById(Long id);
+    
+    @Select("SELECT * FROM t_user WHERE phone = #{phone}")
+    User selectByPhone(String phone);
+    
+    @Update("UPDATE t_user SET last_login_time = #{lastLoginTime} WHERE id = #{id}")
+    int updateLastLoginTime(User user);
+    
+    @Update("UPDATE t_user SET password = #{password} WHERE phone = #{phone}")
+    int updatePassword(@Param("phone") String phone, @Param("password") String password);
+}
+```
+
+#### 技术要点
+
+1. **@Mapper**：MyBatis 自动扫描，Spring Boot 自动注入
+2. **注解方式**：使用 `@Insert`、`@Select`、`@Update`、`@Delete` 配置 SQL
+3. **参数映射**：使用 `#{}` 占位符，自动映射 Java 对象属性
+4. **自增 ID**：使用 `@Options(useGeneratedKeys = true, keyProperty = "id")` 获取数据库自增 ID
+5. **驼峰映射**：`map-underscore-to-camel-case: true` 自动将数据库下划线命名映射为 Java 驼峰命名
+
+---
+
+### 5. 用户 Service（UserService.java）
+
+#### 注册方法
+
+```java
+@Transactional
+public Result<User> register(UserDTO userDTO) {
+    // 检查手机号是否已注册
+    User existingUser = userMapper.selectByPhone(userDTO.getPhone());
+    if (existingUser != null) {
+        return Result.error(400, "该手机号已注册");
+    }
+    
+    // 创建新用户
+    User user = new User();
+    user.setPhone(userDTO.getPhone());
+    user.setPassword(passwordUtil.encode(userDTO.getPassword()));
+    user.setRealName(userDTO.getRealName());
+    user.setIdType(userDTO.getIdType());
+    user.setIdNumber(userDTO.getIdNumber());
+    user.setStatus(1);
+    user.setCreateTime(LocalDateTime.now());
+    user.setLastLoginTime(LocalDateTime.now());
+    
+    userMapper.insert(user);
+    
+    // 生成 token，设置到 User 实体中返回
+    String token = jwtUtil.generateToken(user.getId());
+    user.setPassword(null);
+    user.setToken(token);
+    
+    return Result.success(user);
+}
+```
+
+#### 一键测试登录方法
+
+```java
+public Result<User> demoLogin() {
+    String testPhone = "13800138000";
+    User user = userMapper.selectByPhone(testPhone);
+    
+    // 如果不存在，自动创建测试账号
+    if (user == null) {
+        user = new User();
+        user.setPhone(testPhone);
+        user.setPassword(passwordUtil.encode("123456"));
+        user.setRealName("测试用户");
+        user.setIdType("id_card");
+        user.setIdNumber("110101199001011234");
+        user.setStatus(1);
+        user.setCreateTime(LocalDateTime.now());
+        user.setLastLoginTime(LocalDateTime.now());
+        userMapper.insert(user);
+    }
+    
+    user.setLastLoginTime(LocalDateTime.now());
+    userMapper.updateLastLoginTime(user);
+    
+    // 生成 token，设置到 User 实体中返回
+    String token = jwtUtil.generateToken(user.getId());
+    user.setPassword(null);
+    user.setToken(token);
+    
+    return Result.success(user);
+}
+```
+
+#### 技术要点
+
+1. **@Transactional**：数据库操作原子性，失败自动回滚
+2. **@Service**：Spring 自动扫描，注入到 Controller
+3. **密码加密**：使用 `PasswordUtil.encode` 加密，不存储明文
+4. **Token 生成**：使用 `JwtUtil.generateToken` 生成 JWT
+5. **Token 返回**：在 User 实体中设置 `token` 字段，前端可以获取
+6. **敏感信息清除**：返回前清除 password 字段
+
+---
+
+### 6. 认证 Controller（AuthController.java）
+
+```java
+@RestController
+@RequestMapping("/auth")
+@Validated
+public class AuthController {
+    
+    @Autowired
+    private UserService userService;
+    
+    @Autowired
+    private JwtUtil jwtUtil;
+    
+    @PostMapping("/register")
+    public Result<User> register(@Valid @RequestBody UserDTO userDTO) {
+        return userService.register(userDTO);
+    }
+    
+    @PostMapping("/login")
+    public Result<User> login(@RequestBody UserDTO userDTO) {
+        return userService.login(userDTO);
+    }
+    
+    @PostMapping("/demo-login")
+    public Result<User> demoLogin() {
+        return userService.demoLogin();
+    }
+    
+    @GetMapping("/profile")
+    public Result<User> getProfile(HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        return userService.getProfile(userId);
+    }
+}
+```
+
+#### 技术要点
+
+1. **@RestController**：返回 JSON 数据，自动使用 HttpMessageConverter
+2. **@RequestMapping("/auth")**：设置基础路径，所有方法前缀为 `/auth`
+3. **@Validated**：启用方法参数验证
+4. **@Valid @RequestBody**：触发 DTO 中的验证规则（如 @NotBlank、@Pattern）
+5. **HttpServletRequest.getAttribute("userId")**：获取拦截器设置的 userId
+
+---
+
+## 三、核心代码讲解
+
+### 1. JWT 生成与验证
+
+```java
+// 生成
+String token = Jwts.builder()
+    .setSubject(String.valueOf(userId))
+    .setIssuedAt(new Date())
+    .setExpiration(new Date(System.currentTimeMillis() + expiration))
+    .signWith(secretKey, SignatureAlgorithm.HS256)
+    .compact();
+
+// 验证
+Claims claims = Jwts.parserBuilder()
+    .setSigningKey(secretKey)
+    .build()
+    .parseClaimsJws(token)
+    .getBody();
+```
+
+**讲解**：
+
+- `Jwts.builder()`：构建 JWT
+- `setSubject`：设置主题（用户ID）
+- `setExpiration`：设置过期时间
+- `signWith`：使用密钥和算法签名
+- `parseClaimsJws`：解析并验证 token
+
+### 2. 密码加密与比对
+
+```java
+// 加密
+String hashed = passwordUtil.encode("123456");
+// 结果：$2a$10$...（60位字符）
+
+// 比对
+boolean isMatch = passwordUtil.matches("123456", hashed);
+// 结果：true
+```
+
+**讲解**：
+
+- `BCryptPasswordEncoder.encode`：生成随机 salt，对密码进行哈希
+- `BCryptPasswordEncoder.matches`：使用相同的 salt，比对密码是否匹配
+- 即使数据库泄露，也无法从哈希值反推密码
+
+### 3. MyBatis 注解
+
+```java
+@Insert("INSERT INTO t_user (phone, password) VALUES (#{phone}, #{password})")
+@Options(useGeneratedKeys = true, keyProperty = "id")
+int insert(User user);
+```
+
+**讲解**：
+
+- `@Insert`：插入语句
+- `#{phone}`：占位符，自动映射 user.getPhone()
+- `@Options(useGeneratedKeys = true)`：获取数据库自增 ID
+- `keyProperty = "id"`：将自增 ID 设置到 user 对象的 id 属性
+
+### 4. 放行 OPTIONS 请求
+
+```java
+@Override
+public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+    // 放行 OPTIONS 预检请求（CORS）
+    if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+        return true;
+    }
+    // ... 后续验证逻辑
+}
+```
+
+**讲解**：
+
+- 浏览器发送 CORS 请求前，会先发送 OPTIONS 预检请求
+- 如果拦截器拦截 OPTIONS，前端无法发送实际请求
+- 在 JwtInterceptor 中放行 OPTIONS 请求
+
+---
+
+## 四、接口说明
+
+### 我提供的接口
+
+| 接口                       | 方法 | 作用           | 调用者                      |
+| -------------------------- | ---- | -------------- | --------------------------- |
+| `/api/auth/register`       | POST | 用户注册       | 前端 Register.js            |
+| `/api/auth/login`          | POST | 用户登录       | 前端 Login.js               |
+| `/api/auth/demo-login`     | POST | 一键测试登录   | 前端 Login.js               |
+| `/api/auth/profile`        | GET  | 获取用户信息   | 前端 useAuth.js             |
+| `/api/auth/sms`            | POST | 发送短信验证码 | 前端 Login.js / Register.js |
+| `/api/auth/reset-password` | POST | 重置密码       | 前端 忘记密码页面           |
+
+### 接口参数和返回
+
+#### 注册接口
+
+```json
+// 请求
+{
+  "phone": "13800138000",
+  "password": "123456",
+  "realName": "测试用户",
+  "idType": "id_card",
+  "idNumber": "110101199001011234"
+}
+
+// 响应（Result<T> 格式）
+{
+  "code": 200,
+  "message": "注册成功",
+  "data": {
+    "id": 1,
+    "phone": "13800138000",
+    "realName": "测试用户",
+    "token": "eyJhbGciOiJIUzI1NiJ9..."
+  }
+}
+```
+
+#### 一键测试登录接口
+
+```json
+// 请求：无参数
+
+// 响应
+{
+  "code": 200,
+  "message": "测试登录成功",
+  "data": {
+    "id": 1,
+    "phone": "13800138000",
+    "realName": "测试用户",
+    "token": "eyJhbGciOiJIUzI1NiJ9..."
+  }
+}
+```
+
+---
+
+## 五、遇到的问题与解决方案
+
+### 问题1：Lombok 注解处理器未生效
+
+**问题**：编译时找不到 `setCode`、`getPhone` 等 Lombok 生成的方法。
+**原因**：`lombok` 依赖的 scope 为 `provided`，Maven 编译器不会自动处理注解处理器。
+**解决**：
+
+1. 将 `lombok` 的 scope 改为 `compile`
+2. 在 `maven-compiler-plugin` 中配置 `annotationProcessorPaths`：
+
+```xml
+<annotationProcessorPaths>
+    <path>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>1.18.30</version>
+    </path>
+</annotationProcessorPaths>
+```
+
+### 问题2：H2 数据库语法不兼容
+
+**问题**：`schema.sql` 执行失败，报错 `Unknown data type: "IDX_PHONE"`。
+**原因**：H2 不支持 `CREATE TABLE ... INDEX idx_name (column)` 的 MySQL 语法。
+**解决**：将索引单独创建：
+
+```sql
+CREATE TABLE IF NOT EXISTS t_user (...);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_phone ON t_user(phone);
+```
+
+### 问题3：CORS 预检请求被拦截
+
+**问题**：前端发送 `OPTIONS` 预检请求，返回 401。
+**原因**：JwtInterceptor 拦截了所有请求，包括 CORS 预检请求。
+**解决**：在 JwtInterceptor 中放行 OPTIONS 请求：
+
+```java
+if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+    return true;
+}
+```
+
+### 问题4：后端未返回 token
+
+**问题**：登录成功后，前端无法获取 token。
+**原因**：后端 `UserService` 生成了 token，但没有设置到 User 实体中返回。
+**解决**：在 User 实体中添加 `token` 字段，登录时设置：
+
+```java
+user.setToken(token);
+```
+
+### 问题5：跨域请求失败
+
+**原因**：前端端口 3000，后端端口 8080，浏览器阻止跨域。
+**解决**：使用 `WebMvcConfigurer.addCorsMappings` 配置 CORS，允许所有来源。
+
+### 问题6：MyBatis 参数映射失败
+
+**原因**：Java 驼峰命名与数据库下划线命名不一致。
+**解决**：配置 `map-underscore-to-camel-case: true`，自动映射。
+
+### 问题7：密码比对失败
+
+**原因**：注册时加密，登录时未使用正确的比对方法。
+**解决**：使用 `BCryptPasswordEncoder.matches` 进行比对，不是简单的 `equals`。
+
+### 问题8：H2 数据库数据重启丢失
+
+**原因**：H2 内存数据库，应用重启后数据清空。
+**解决**：开发环境使用 `spring.datasource.url=jdbc:h2:mem:submission_db;DB_CLOSE_DELAY=-1` 延迟关闭。
+
+---
+
+## 六、答辩要点
+
+### 1. 开场（30秒）
+
+"我是后端认证与数据负责人，负责 Spring Boot 后端架构搭建、Maven 配置、用户认证体系、JWT 认证、密码加密、MyBatis 数据访问层，以及一键测试登录功能。"
+
+### 2. 技术亮点（1分钟）
+
+- **Spring Boot 快速搭建**：使用 parent BOM 管理依赖，自动配置
+- **JWT 无状态认证**：jjwt 库，HS256 算法，token 有效期 7 天
+- **BCrypt 密码加密**：Spring Security BCryptPasswordEncoder，不可逆哈希
+- **MyBatis 注解方式**：简洁高效，自动映射驼峰命名
+- **一键测试登录**：自动创建测试账号，无需注册，降低使用门槛
+- **全局异常处理**：@ControllerAdvice，统一处理所有异常
+- **CORS 预检请求放行**：JwtInterceptor 放行 OPTIONS 请求
+
+### 3. 核心代码展示（1分钟）
+
+展示 `JwtUtil.java` 中的 JWT 生成和验证方法，以及 `UserService.java` 中的注册和一键测试登录方法
+
+### 4. 问题解决（1分钟）
+
+讲述 CORS 预检请求被拦截的问题，以及通过 JwtInterceptor 放行 OPTIONS 请求解决的方案
+
+### 5. 总结（30秒）
+
+"我的模块为整个系统提供了安全、可靠的后端基础，包括 Spring Boot 架构、JWT 认证、密码加密、MyBatis 数据访问，以及便捷的一键测试登录功能，确保了系统的安全性和用户体验。"
+
+---
+
+**答辩时长**：约 4 分钟
+
+---
+
+**成员C签名**：____________  
+**日期**：2026-06-11
