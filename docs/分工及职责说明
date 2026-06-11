@@ -1,0 +1,140 @@
+# 团队分工与职责说明
+
+## 项目概述
+
+本项目为**申报系统**，前端采用 React 18 + Ant Design 5，后端采用 **Spring Boot 2.7.18 + Maven + MyBatis + H2/MySQL**。
+
+## 团队构成（4人）
+
+---
+
+## 成员A：前端架构与认证模块负责人
+
+### 职责范围
+
+- 前端项目架构搭建（React 18 + Create React App）
+- 全局路由配置（React Router v6）
+- 认证体系（登录、注册、权限控制、自动恢复）
+- 全局样式与响应式布局（CSS变量 + Ant Design）
+- API服务层封装（axios + 拦截器）
+
+### 负责文件
+
+| 文件                                        | 作用                                          |
+| ------------------------------------------- | --------------------------------------------- |
+| `frontend/src/index.js`                     | 应用入口（ReactDOM渲染 + Ant Design中文配置） |
+| `frontend/src/App.js`                       | 路由配置（所有路由规则 + AuthProvider）       |
+| `frontend/src/components/Layout.js`         | 页面布局（导航栏 + 内容区 + 页脚）            |
+| `frontend/src/components/ProtectedRoute.js` | 路由守卫（未登录跳转）                        |
+| `frontend/src/hooks/useAuth.js`             | 认证状态管理（Context API）                   |
+| `frontend/src/services/api.js`              | API封装（axios + 请求/响应拦截器）            |
+| `frontend/src/styles/global.css`            | 全局样式（CSS变量 + 响应式）                  |
+| `frontend/public/index.html`                | 入口HTML                                      |
+
+---
+
+## 成员B：前端业务模块负责人
+
+### 职责范围
+
+- 申报列表页面（首页）：展示申报、状态管理、操作按钮
+- 创建申报页面（三步表单）：项目选择、信息填写、文件上传
+- 申报详情页面（查看/编辑）：分节展示、状态控制
+- 证件号码验证工具（5种证件类型）
+- 申报截止时间检查
+
+### 负责文件
+
+| 文件                                     | 作用                               |
+| ---------------------------------------- | ---------------------------------- |
+| `frontend/src/pages/Home.js`             | 首页（申报列表 + 状态管理 + 操作） |
+| `frontend/src/pages/SubmissionCreate.js` | 创建申报（三步表单）               |
+| `frontend/src/pages/SubmissionDetail.js` | 申报详情（查看/编辑）              |
+| `frontend/src/utils/idValidation.js`     | 证件号码验证（5种证件类型）        |
+
+---
+
+## 成员C：后端认证与数据负责人
+
+### 职责范围
+
+- **Spring Boot项目搭建**：Maven配置、启动类、application.yml
+- **用户认证体系**：注册、登录、JWT认证、密码加密（BCrypt）
+- **一键测试登录**：自动创建测试账号，无需注册
+- **用户数据管理**：MyBatis + H2数据库（开发）/ MySQL（生产）
+- **短信验证码模拟**：演示模式，固定验证码
+- **全局异常处理**：统一异常处理
+
+### 负责文件
+
+| 文件                                                         | 作用                                         |
+| ------------------------------------------------------------ | -------------------------------------------- |
+| `backend/pom.xml`                                            | Maven依赖配置（Spring Boot + MyBatis + JWT） |
+| `backend/src/main/java/com/submission/SubmissionApplication.java` | Spring Boot启动类                            |
+| `backend/src/main/java/com/submission/controller/AuthController.java` | 认证接口（注册/登录/一键测试登录）           |
+| `backend/src/main/java/com/submission/service/UserService.java` | 用户业务逻辑                                 |
+| `backend/src/main/java/com/submission/mapper/UserMapper.java` | 用户数据访问（MyBatis注解）                  |
+| `backend/src/main/java/com/submission/entity/User.java`      | 用户实体类                                   |
+| `backend/src/main/java/com/submission/util/JwtUtil.java`     | JWT工具类（生成/验证/解析）                  |
+| `backend/src/main/java/com/submission/util/PasswordUtil.java` | 密码工具类（BCrypt加密）                     |
+| `backend/src/main/java/com/submission/interceptor/JwtInterceptor.java` | JWT认证拦截器（HandlerInterceptor）          |
+| `backend/src/main/java/com/submission/config/WebConfig.java` | Web配置（跨域 + 拦截器注册）                 |
+| `backend/src/main/resources/application.yml`                 | Spring Boot应用配置                          |
+| `backend/src/main/resources/schema.sql`                      | H2数据库初始化脚本                           |
+
+---
+
+## 成员D：后端业务与文件上传负责人
+
+### 职责范围
+
+- **申报CRUD接口**：创建、查询、更新、删除（RESTful API）
+- **申报状态流转**：提交申报、撤回申报
+- **文件上传**：单文件上传、多文件上传、类型限制、大小限制
+- **项目文档编写**：README.md、CONFIG.md、分工说明、日志、答辩手册
+
+### 负责文件
+
+| 文件                                                         | 作用                              |
+| ------------------------------------------------------------ | --------------------------------- |
+| `backend/src/main/java/com/submission/controller/SubmissionController.java` | 申报接口（CRUD + 提交/撤回）      |
+| `backend/src/main/java/com/submission/controller/UploadController.java` | 文件上传接口（MultipartFile）     |
+| `backend/src/main/java/com/submission/service/SubmissionService.java` | 申报业务逻辑                      |
+| `backend/src/main/java/com/submission/mapper/SubmissionMapper.java` | 申报数据访问（MyBatis注解）       |
+| `backend/src/main/java/com/submission/entity/Submission.java` | 申报实体类                        |
+| `backend/src/main/java/com/submission/dto/Result.java`       | 统一响应结果（泛型）              |
+| `backend/src/main/java/com/submission/dto/UserDTO.java`      | 用户传输对象（验证注解）          |
+| `backend/src/main/java/com/submission/dto/SubmissionDTO.java` | 申报传输对象（验证注解）          |
+| `backend/src/main/java/com/submission/exception/GlobalExceptionHandler.java` | 全局异常处理（@ControllerAdvice） |
+| `docs/项目简介.md`                                           | 项目简介                          |
+| `docs/项目手册.md`                                           | 项目手册（详细文档）              |
+| `docs/分工与职责说明.md`                                     | 本文件                            |
+| `docs/成员A/B/C/D-日志.md`                                   | 4人日志                           |
+| `docs/成员A/B/C/D-答辩手册.md`                               | 4人答辩手册                       |
+
+---
+
+## 协作关系
+
+```
+成员A（前端架构） <──API调用──> 成员C（后端认证）
+       ↓                              ↓
+  React路由+认证+布局              Spring Boot+JWT+MyBatis
+       ↓                              ↓
+成员B（前端业务） <──API调用──> 成员D（后端业务）
+  申报页面+验证                     申报CRUD+文件上传
+```
+
+## 接口对接关系
+
+| 前端负责人 | 前端文件                      | 后端负责人 | 后端文件                  | 接口               |
+| ---------- | ----------------------------- | ---------- | ------------------------- | ------------------ |
+| 成员A      | Login.js / Register.js        | 成员C      | AuthController.java       | /api/auth/*        |
+| 成员B      | Home.js / SubmissionCreate.js | 成员D      | SubmissionController.java | /api/submissions/* |
+| 成员B      | SubmissionCreate.js           | 成员D      | UploadController.java     | /api/upload        |
+| 成员A      | useAuth.js                    | 成员C      | AuthController.java       | /api/auth/profile  |
+
+---
+
+**文档版本**：v1.0  
+**更新日期**：2026-06-11
