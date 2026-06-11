@@ -1,0 +1,323 @@
+# 成员C：后端认证与数据负责人 — 工作日志
+
+## 基本信息
+
+- **姓名**：[成员C姓名]
+- **职责**：Spring Boot项目搭建、Maven配置、用户认证体系、JWT认证、密码加密、MyBatis数据访问层
+- **负责文件**：pom.xml、SubmissionApplication.java、AuthController.java、UserService.java、UserMapper.java、User.java、JwtUtil.java、PasswordUtil.java、JwtInterceptor.java、WebConfig.java、application.yml、schema.sql
+
+---
+
+## 日志1（第1天）：Spring Boot项目搭建与Maven配置
+
+### 今日完成工作
+
+1. **创建Spring Boot项目**
+   - 使用 Spring Initializr 创建项目
+   - 配置 `pom.xml`：
+     - 继承 `spring-boot-starter-parent` 2.7.18
+     - 添加 `spring-boot-starter-web`（Web支持）
+     - 添加 `mybatis-spring-boot-starter`（MyBatis集成）
+     - 添加 `h2`（开发数据库）
+     - 添加 `mysql-connector-java`（生产数据库）
+     - 添加 `jjwt-api`、`jjwt-impl`、`jjwt-jackson`（JWT）
+     - 添加 `lombok`（简化代码）
+     - 添加 `spring-boot-starter-validation`（验证）
+
+2. **创建启动类**
+   - 创建 `SubmissionApplication.java`：
+     - 使用 `@SpringBootApplication` 注解
+     - 实现 `main` 方法，调用 `SpringApplication.run`
+
+3. **配置application.yml**
+   - 配置服务器端口：8080
+   - 配置上下文路径：`/api`
+   - 配置数据源：H2内存数据库（开发）
+   - 配置MyBatis：mapper位置、别名包、驼峰映射
+   - 配置JWT：secret、过期时间（7天）
+   - 配置日志：MyBatis debug级别
+
+4. **创建数据库初始化脚本**
+   - 创建 `schema.sql`：
+     - 创建 `t_user` 表（用户表）
+     - 创建 `t_submission` 表（申报表）
+     - 添加索引优化查询
+
+### 技术细节
+
+- Spring Boot 2.7.18 基于 Spring Framework 5.x
+- Maven 依赖管理，使用 `<parent>` 继承 BOM
+- H2 内存数据库适合开发，无需安装 MySQL
+- `application.yml` 支持多环境配置（dev、test、prod）
+
+### 遇到的问题
+
+- Maven 依赖冲突：Spring Boot 2.7.18 与 MyBatis 版本兼容性
+- 通过查看 MyBatis Spring Boot Starter 文档解决
+- H2 数据库控制台需要配置 `spring.h2.console.enabled`
+
+### 明日计划
+
+- 实现JWT工具类和密码工具类
+- 实现JWT认证拦截器
+
+---
+
+## 日志2（第3天）：JWT认证与密码加密
+
+### 今日完成工作
+
+1. **实现JWT工具类**
+   - 创建 `JwtUtil.java`：
+     - 使用 `io.jsonwebtoken` 库（jjwt 0.11.5）
+     - 实现 `generateToken(Long userId)`：
+       - 使用 `Jwts.builder()` 构建 token
+       - 设置 Subject（用户ID）、签发时间、过期时间
+       - 使用 `HS256` 算法签名
+       - 从 `application.yml` 读取 secret 配置
+     - 实现 `getUserIdFromToken(String token)`：
+       - 使用 `Jwts.parserBuilder()` 解析 token
+       - 从 Claims 中获取 Subject（用户ID）
+     - 实现 `validateToken(String token)`：
+       - 尝试解析 token，成功返回 true
+       - 捕获 `JwtException` 和 `IllegalArgumentException`，返回 false
+
+2. **实现密码工具类**
+   - 创建 `PasswordUtil.java`：
+     - 使用 `BCryptPasswordEncoder`（Spring Security）
+     - 实现 `encode(String password)`：加密密码
+     - 实现 `matches(String rawPassword, String encodedPassword)`：验证密码
+     - BCrypt 使用 salt rounds 10（默认）
+
+3. **实现JWT认证拦截器**
+   - 创建 `JwtInterceptor.java`：
+     - 实现 `HandlerInterceptor` 接口
+     - 重写 `preHandle` 方法：
+       - 放行 `OPTIONS` 预检请求（CORS）
+       - 从请求头 `Authorization` 提取 token
+       - 验证 token 格式（必须以 "Bearer " 开头）
+       - 调用 `JwtUtil.validateToken` 验证 token
+       - 解析 userId，存入 request 属性
+       - 验证失败返回 401
+
+4. **配置WebConfig**
+   - 创建 `WebConfig.java`：
+     - 实现 `WebMvcConfigurer` 接口
+     - 配置 CORS：`addCorsMappings` 允许所有来源
+     - 注册拦截器：`addInterceptors` 注册 `JwtInterceptor`
+     - 排除 `/auth/**` 路径（登录注册不需要认证）
+
+### 技术细节
+
+- JWT 使用 `jjwt` 库，API 简洁易用
+- `Keys.hmacShaKeyFor` 生成安全的密钥
+- `HandlerInterceptor` 是 Spring MVC 的拦截器机制
+- `WebMvcConfigurer` 配置 Spring MVC 行为
+
+### 遇到的问题
+
+- jjwt 0.11.5 的 API 与旧版本不同，需要查阅新文档
+- `parserBuilder` 替代了旧的 `parser` 方法
+- BCryptPasswordEncoder 需要添加 `spring-security-crypto` 依赖
+- CORS 预检请求被拦截，需要在 JwtInterceptor 中放行 OPTIONS
+
+### 明日计划
+
+- 实现用户数据访问层（MyBatis Mapper）
+- 实现用户实体类
+
+---
+
+## 日志3（第5天）：MyBatis数据访问层与实体类
+
+### 今日完成工作
+
+1. **创建用户实体类**
+   - 创建 `User.java`：
+     - 使用 Lombok 的 `@Data` 注解（自动生成 getter/setter）
+     - 字段：id、phone、password、realName、idType、idNumber、status、createTime、lastLoginTime
+     - 新增 `token` 字段（不存入数据库，仅用于响应）
+     - 使用 `Long` 作为主键类型（对应数据库 BIGINT）
+     - 使用 `LocalDateTime` 作为时间类型
+
+2. **创建用户Mapper**
+   - 创建 `UserMapper.java`：
+     - 使用 `@Mapper` 注解（MyBatis 自动扫描）
+     - 使用注解方式配置 SQL（无需 XML）：
+       - `@Insert`：插入用户
+       - `@Select`：根据ID查询、根据手机号查询
+       - `@Update`：更新登录时间、更新密码
+     - 使用 `@Options(useGeneratedKeys = true, keyProperty = "id")` 获取自增ID
+     - 使用 `@Param` 注解命名参数
+
+3. **创建统一响应结果**
+   - 创建 `Result.java`：
+     - 使用泛型 `<T>` 支持任意类型数据
+     - 字段：code（状态码）、message（提示信息）、data（数据）
+     - 静态方法：`success()`、`success(T data)`、`error(String message)`、`error(Integer code, String message)`
+     - 统一响应格式，便于前端处理
+
+4. **创建DTO**
+   - 创建 `UserDTO.java`：
+     - 使用 `@NotBlank`、`@Pattern` 注解进行验证
+     - 字段：phone、password、smsCode、realName、idType、idNumber
+     - 用于接收前端请求参数
+
+### 技术细节
+
+- MyBatis 注解方式简洁，适合简单 SQL
+- `@Mapper` 注解让 Spring Boot 自动扫描 Mapper 接口
+- `map-underscore-to-camel-case: true` 自动将数据库下划线命名映射为 Java 驼峰命名
+- Lombok 的 `@Data` 注解自动生成 getter、setter、toString、equals、hashCode
+
+### 遇到的问题
+
+- MyBatis 注解方式对于复杂 SQL 不够灵活
+- 本项目 SQL 简单，使用注解足够
+- 如果 SQL 复杂，可以使用 XML 映射文件
+- Lombok 需要 IDE 安装插件才能正确识别
+- 通过安装 Lombok 插件解决
+
+### 明日计划
+
+- 实现用户Service业务逻辑
+- 实现用户Controller接口
+
+---
+
+## 日志4（第7天）：用户Service与Controller
+
+### 今日完成工作
+
+1. **实现用户Service**
+   - 创建 `UserService.java`：
+     - 使用 `@Service` 注解（Spring 自动扫描）
+     - 使用 `@Autowired` 注入 `UserMapper`、`PasswordUtil`、`JwtUtil`
+     - 实现 `register(UserDTO)`：
+       - 检查手机号是否已注册
+       - 使用 `PasswordUtil.encode` 加密密码
+       - 设置默认状态（status=1）
+       - 调用 `UserMapper.insert` 插入用户
+       - 生成 JWT token，设置到 User 实体
+       - 返回 Result.success
+     - 实现 `login(UserDTO)`：
+       - 根据手机号查询用户
+       - 密码登录：使用 `PasswordUtil.matches` 验证密码
+       - 验证码登录：验证固定验证码 "123456"
+       - 更新登录时间
+       - 生成 JWT token，设置到 User 实体
+       - 返回 Result.success
+     - 实现 `demoLogin()`：
+       - 检查测试账号是否存在
+       - 不存在则自动创建（使用 `PasswordUtil.encode` 加密密码）
+       - 更新登录时间
+       - 生成 JWT token，设置到 User 实体
+       - 返回 Result.success
+     - 实现 `getProfile(Long userId)`：
+       - 根据ID查询用户
+       - 清除密码字段（不返回敏感信息）
+       - 返回 Result.success
+
+2. **实现用户Controller**
+   - 创建 `AuthController.java`：
+     - 使用 `@RestController` 注解（返回 JSON）
+     - 使用 `@RequestMapping("/auth")` 设置基础路径
+     - 使用 `@Validated` 启用方法参数验证
+     - 使用 `@Autowired` 注入 `UserService`
+     - 实现 `register`：接收 `@Valid @RequestBody UserDTO`
+     - 实现 `login`：接收 `@RequestBody UserDTO`
+     - 实现 `demoLogin`：无参数，直接调用 Service
+     - 实现 `getProfile`：从 `HttpServletRequest` 获取 userId（由拦截器设置）
+     - 实现 `sendSms`：接收 `@RequestParam String phone`
+     - 实现 `resetPassword`：接收多个 `@RequestParam` 参数
+
+3. **实现全局异常处理**
+   - 创建 `GlobalExceptionHandler.java`：
+     - 使用 `@ControllerAdvice` 注解（全局异常处理）
+     - 处理 `MethodArgumentNotValidException`（参数验证失败）
+     - 处理 `ConstraintViolationException`（约束验证失败）
+     - 处理 `Exception`（通用异常）
+     - 返回统一的 Result.error 响应
+
+### 技术细节
+
+- `@Transactional` 注解确保数据库操作的原子性
+- `@Valid` 注解触发 DTO 中的验证规则
+- `HttpServletRequest.getAttribute("userId")` 获取拦截器设置的 userId
+- `@ControllerAdvice` 统一处理所有 Controller 的异常
+
+### 遇到的问题
+
+- 参数验证失败时，错误信息格式不统一
+- 通过 `GlobalExceptionHandler` 统一处理，返回标准格式
+- `MethodArgumentNotValidException` 包含多个字段错误
+- 取第一个错误信息返回
+
+### 明日计划
+
+- 与前端联调认证接口
+- 测试完整认证流程
+
+---
+
+## 日志5（第9天）：接口联调与项目收尾
+
+### 今日完成工作
+
+1. **与前端联调认证接口**
+   - 与成员A（前端架构负责人）对接 `/api/auth/*` 接口
+   - 使用 Postman 测试接口：
+     - `POST /api/auth/register` — 用户注册
+     - `POST /api/auth/login` — 用户登录
+     - `POST /api/auth/demo-login` — 一键测试登录
+     - `GET /api/auth/profile` — 获取用户信息
+     - `POST /api/auth/sms` — 发送短信验证码
+     - `POST /api/auth/reset-password` — 重置密码
+
+2. **修复联调问题**
+   - 问题1：跨域请求失败（CORS）
+     - 原因：前端端口 3000，后端端口 8080，浏览器阻止跨域
+     - 解决：Spring Boot 配置 `WebConfig.addCorsMappings` 允许所有来源
+   - 问题2：前端发送的 JSON 格式不正确
+     - 原因：Content-Type 未设置或请求体格式错误
+     - 解决：Spring Boot 使用 `@RequestBody` 自动解析 JSON
+   - 问题3：token 验证失败
+     - 原因：前端发送的 Authorization 头格式不正确
+     - 解决：统一格式为 `Bearer <token>`
+   - 问题4：密码加密后比对失败
+     - 原因：注册时加密，登录时未使用正确的比对方法
+     - 解决：使用 `BCryptPasswordEncoder.matches` 进行比对
+   - 问题5：CORS 预检请求被拦截
+     - 原因：JwtInterceptor 拦截了 OPTIONS 请求
+     - 解决：在 JwtInterceptor 中放行 OPTIONS 请求
+
+3. **优化接口响应**
+   - 统一响应格式：Result 泛型对象
+   - 添加 HTTP 状态码：200（成功）、201（创建）、400（参数错误）、401（未认证）、404（不存在）、500（服务器错误）
+
+4. **编写技术文档**
+   - 整理认证接口文档
+   - 记录请求参数和响应格式
+   - 记录错误码和错误信息
+   - 记录测试账号信息
+
+5. **与团队成员联调**
+   - 与成员A确认前端调用方式
+   - 与成员D确认申报接口的认证需求
+
+### 项目总结
+
+- 完成 Spring Boot 后端架构搭建
+- 完成 Maven 依赖配置
+- 完成 JWT 认证体系（生成、验证、解析）
+- 完成 BCrypt 密码加密（不可逆哈希）
+- 完成 MyBatis 数据访问层（注解方式）
+- 完成用户 CRUD 接口（注册、登录、一键测试登录、获取信息、短信、重置密码）
+- 完成全局异常处理
+- 完成跨域配置和拦截器配置
+- 与前端完成联调，测试通过
+
+---
+
+**成员C签名**：____________  
+**日期**：2026-06-11
