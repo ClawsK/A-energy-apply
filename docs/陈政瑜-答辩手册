@@ -1,0 +1,468 @@
+# 成员B：前端业务模块负责人 — 答辩手册
+
+## 一、模块概述
+
+我是本项目的**前端业务模块负责人**，负责申报系统的核心业务页面：首页（申报列表）、创建申报页面、申报详情页面，以及证件号码验证工具。
+
+### 我的职责范围
+
+1. **首页（申报列表）**：展示申报、状态管理、操作按钮、截止时间检查
+2. **创建申报页面**：三步表单、项目选择、信息填写、文件上传
+3. **申报详情页面**：查看详情、编辑申报、分节展示
+4. **证件号码验证**：5种证件类型验证（身份证/护照/港澳/台湾）
+
+### 我负责的文件
+
+| 文件                                     | 作用                           |
+| ---------------------------------------- | ------------------------------ |
+| `frontend/src/pages/Home.js`             | 首页（申报列表+状态管理+操作） |
+| `frontend/src/pages/SubmissionCreate.js` | 创建申报（三步表单）           |
+| `frontend/src/pages/SubmissionDetail.js` | 申报详情（查看/编辑）          |
+| `frontend/src/utils/idValidation.js`     | 证件号码验证（5种类型）        |
+
+---
+
+## 二、技术细节详解
+
+### 1. 证件号码验证工具（idValidation.js）
+
+#### 整体架构
+
+实现5种证件类型的号码验证，每种证件有独立的验证函数：
+
+```javascript
+// 居民身份证验证（18位）
+export const validateChineseID = (id) => {
+  if (!id || id.length !== 18) return false;
+  
+  const weight = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+  const check = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+  
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    sum += parseInt(id[i]) * weight[i];
+  }
+  
+  return id[17].toUpperCase() === check[sum % 11];
+};
+
+// 通用验证入口
+export const validateID = (id, type) => {
+  switch (type) {
+    case 'id_card': return validateChineseID(id);
+    case 'passport': return validatePassport(id);
+    case 'hk_id': return validateHKID(id);
+    case 'macau_id': return validateMacauID(id);
+    case 'taiwan_pass': return validateTaiwanPass(id);
+    default: return false;
+  }
+};
+
+export const IDTypeOptions = [
+  { value: 'id_card', label: '居民身份证' },
+  { value: 'passport', label: '护照' },
+  { value: 'hk_id', label: '港澳居民来往内地通行证' },
+  { value: 'macau_id', label: '澳门居民身份证' },
+  { value: 'taiwan_pass', label: '台湾居民来往大陆通行证' },
+];
+```
+
+#### 技术要点
+
+1. **身份证校验**：基于国家标准 GB 11643-1999，使用加权因子计算校验码
+2. **护照校验**：中国护照（E/P + 8位数字），外国护照（字母数字组合）
+3. **港澳身份证**：字母转数字（A=1, B=2...），按位置加权求和
+4. **统一入口**：`validateID(id, type)` 根据类型自动选择验证函数
+5. **返回布尔值**：true 表示验证通过，false 表示验证失败
+
+---
+
+### 2. 首页（申报列表）—— Home.js
+
+#### 整体架构
+
+```javascript
+function Home() {
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isDeadlinePassed, setIsDeadlinePassed] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    loadSubmissions();
+    checkDeadline();
+  }, []);
+}
+```
+
+#### 状态管理
+
+1. **状态标签**：
+   - `draft` → 橙色标签 "未提交"
+   - `submitted` → 绿色标签 "已提交"
+
+2. **操作按钮**：
+   - 未提交（draft）：编辑按钮、提交按钮、删除按钮
+   - 已提交（submitted）：查看按钮、撤回按钮
+   - 截止时间到达：仅查看按钮
+
+3. **截止时间检查**：
+   - 从 `localStorage` 读取 `deadline`（默认 '2026-12-31'）
+   - 比较当前时间与截止时间
+   - 截止时间到达后关闭"创建新的申报"按钮
+
+#### 操作功能实现
+
+```javascript
+const handleSubmit = async (id) => {
+  await submissionAPI.submit(id);
+  message.success('提交成功');
+  loadSubmissions();
+};
+
+const handleWithdraw = async (id) => {
+  await submissionAPI.withdraw(id);
+  message.success('撤回成功');
+  loadSubmissions();
+};
+
+const handleDelete = (id) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: '删除后无法恢复，是否继续？',
+    onOk: async () => {
+      await submissionAPI.delete(id);
+      message.success('删除成功');
+      loadSubmissions();
+    },
+  });
+};
+```
+
+#### 字段映射适配
+
+由于后端从 MongoDB 改为 Spring Boot，字段名发生变化：
+
+```javascript
+// 旧字段名 → 新字段名
+createdAt → createTime
+_id → id
+
+// 表格配置
+dataIndex: 'createTime', // 之前是 'createdAt'
+rowKey: 'id', // 之前是 '_id'
+
+// 操作按钮
+navigate(`/detail/${record.id}`) // 之前是 record._id
+```
+
+---
+
+### 3. 创建申报页面—— SubmissionCreate.js
+
+#### 三步表单设计
+
+采用 **所有字段始终渲染** 的方案，解决字段丢失问题：
+
+```javascript
+const renderStepContent = () => {
+  return (
+    <>
+      {/* 第一步：选择项目 - 始终渲染但可能隐藏 */}
+      <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+        <Form.Item name="category" rules={[{ required: true, message: '请选择申报项目' }]}>
+          <Select placeholder="选择申报项目" options={categories} />
+        </Form.Item>
+      </div>
+
+      {/* 第二步：基本信息 - 始终渲染但可能隐藏 */}
+      <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+        <Form.Item name="applicantType" rules={[{ required: true }]}>
+          <Radio.Group onChange={(e) => setApplicantType(e.target.value)}>
+            {applicantTypes.map(type => (
+              <Radio.Button key={type.value} value={type.value}>{type.label}</Radio.Button>
+            ))}
+          </Radio.Group>
+        </Form.Item>
+        <Form.Item name="title" rules={[{ required: true, message: '请输入作品名称' }]}>
+          <Input placeholder="作品名称" />
+        </Form.Item>
+        <Form.Item name="description" rules={[{ required: true, message: '请输入作品描述' }]}>
+          <TextArea rows={4} placeholder="作品描述" />
+        </Form.Item>
+      </div>
+
+      {/* 第三步：详细信息 - 始终渲染但可能隐藏 */}
+      <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+        {applicantType === 'organization' && (
+          <>
+            <Form.Item name="recommendUnit" rules={[{ required: true, message: '请输入推荐单位' }]}>
+              <Input placeholder="推荐单位" />
+            </Form.Item>
+            <Form.Item name="sealFile" valuePropName="fileList" getValueFromEvent={normFile}>
+              <Upload name="seal" action="http://localhost:8080/api/upload" listType="text">
+                <Button icon={<UploadOutlined />}>上传单位推荐盖章</Button>
+              </Upload>
+            </Form.Item>
+          </>
+        )}
+        <Form.Item name="workLink" rules={[{ type: 'url', message: '请输入有效的URL' }]}>
+          <Input placeholder="作品网络链接（可选）" />
+        </Form.Item>
+        <Form.Item name="workFiles" valuePropName="fileList" getValueFromEvent={normFile}>
+          <Upload name="files" action="http://localhost:8080/api/upload" multiple listType="text">
+            <Button icon={<UploadOutlined />}>上传相关文件</Button>
+          </Upload>
+        </Form.Item>
+      </div>
+    </>
+  );
+};
+```
+
+#### 关键改进
+
+- **字段始终渲染**：所有 Form.Item 始终存在于 DOM 中，只是通过 CSS `display: none` 隐藏
+- **解决字段丢失**：切换步骤时，字段值不会丢失，因为字段从未被卸载
+- **文件上传完整URL**：使用 `action="http://localhost:8080/api/upload"`，避免跨域问题
+- **数据提取**：`form.getFieldsValue(true)` 可以获取所有字段的值
+
+#### 动态字段显示
+
+根据 `applicantType` 动态显示不同字段：
+
+- **个人申报**：无推荐单位字段，无盖章上传
+- **单位推荐**：显示推荐单位输入框和盖章文件上传
+
+---
+
+### 4. 申报详情页面—— SubmissionDetail.js
+
+#### 分节展示
+
+```javascript
+<Form form={form} onFinish={handleSave} layout="vertical" disabled={!isDraft}>
+  <div className="form-section">
+    <div className="form-section-title">项目信息</div>
+    <Form.Item label="申报类别">
+      <Input value={categories[submission.category]} disabled />
+    </Form.Item>
+  </div>
+
+  <div className="form-section">
+    <div className="form-section-title">个人信息</div>
+    <Form.Item name="title" rules={[{ required: true }]}>
+      <Input />
+    </Form.Item>
+  </div>
+</Form>
+```
+
+#### 状态控制
+
+- **未提交（draft）**：表单可编辑，显示"保存修改"按钮
+- **已提交（submitted）**：表单禁用（disabled），只读
+
+#### 数据加载
+
+```javascript
+const loadSubmission = async () => {
+  try {
+    const res = await submissionAPI.getDetail(id);
+    // Spring Boot 后端返回 Result<T>，需要提取 res.data.data
+    const data = res.data.data;
+    setSubmission(data);
+    form.setFieldsValue(data);
+  } catch (error) {
+    message.error('加载失败');
+  }
+  setLoading(false);
+};
+```
+
+---
+
+## 三、核心代码讲解
+
+### 1. 身份证验证算法
+
+```javascript
+const weight = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+const check = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+
+let sum = 0;
+for (let i = 0; i < 17; i++) {
+  sum += parseInt(id[i]) * weight[i];
+}
+
+return id[17].toUpperCase() === check[sum % 11];
+```
+
+**讲解**：
+
+- 前17位数字分别乘以权重因子
+- 求和后对11取模
+- 根据模值从校验码对照表中查找对应字符
+- 与最后一位比较，相同则验证通过
+
+### 2. 状态标签渲染
+
+```javascript
+const getStatusTag = (status) => {
+  switch (status) {
+    case 'draft':
+      return <Tag className="status-badge status-draft">未提交</Tag>;
+    case 'submitted':
+      return <Tag className="status-badge status-submitted">已提交</Tag>;
+    default:
+      return <Tag>{status}</Tag>;
+  }
+};
+```
+
+**讲解**：
+
+- 根据状态返回不同颜色的标签
+- 未提交：橙色（warning）
+- 已提交：绿色（success）
+- 使用 CSS 类名统一样式
+
+### 3. 三步表单字段渲染
+
+```javascript
+<div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+  <Form.Item name="category">...</Form.Item>
+</div>
+<div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+  <Form.Item name="title">...</Form.Item>
+</div>
+```
+
+**讲解**：
+
+- 所有字段始终渲染在 DOM 中
+- 使用 CSS `display: none` 隐藏非当前步骤
+- 切换步骤时，字段值不会丢失
+- `form.getFieldsValue(true)` 可以获取所有字段
+
+---
+
+## 四、接口说明
+
+### 我调用的后端接口（Spring Boot）
+
+| 接口                            | 方法   | 作用         | 调用位置                           |
+| ------------------------------- | ------ | ------------ | ---------------------------------- |
+| `/api/submissions`              | GET    | 获取申报列表 | Home.js loadSubmissions            |
+| `/api/submissions`              | POST   | 创建申报     | SubmissionCreate.js handleSubmit   |
+| `/api/submissions/:id`          | GET    | 获取申报详情 | SubmissionDetail.js loadSubmission |
+| `/api/submissions/:id`          | PUT    | 更新申报     | SubmissionDetail.js handleSave     |
+| `/api/submissions/:id`          | DELETE | 删除申报     | Home.js handleDelete               |
+| `/api/submissions/:id/submit`   | POST   | 提交申报     | Home.js handleSubmit               |
+| `/api/submissions/:id/withdraw` | POST   | 撤回申报     | Home.js handleWithdraw             |
+| `/api/upload`                   | POST   | 文件上传     | SubmissionCreate.js Upload         |
+
+### 响应数据格式
+
+Spring Boot 后端返回 `Result<T>`：
+
+```javascript
+// 响应结构
+{
+  code: 200,
+  message: "操作成功",
+  data: [...]  // 实际业务数据
+}
+
+// 前端提取数据
+const res = await submissionAPI.getList();
+setSubmissions(res.data.data || []);  // res.data 是 Result，res.data.data 是业务数据
+```
+
+---
+
+## 五、遇到的问题与解决方案
+
+### 问题1：字段名不匹配
+
+**原因**：MongoDB 后端使用 `_id` 和 `createdAt`，Spring Boot 后端使用 `id` 和 `createTime`
+**解决**：前端统一使用 Java 后端字段名
+
+```javascript
+dataIndex: 'createTime', // 之前是 'createdAt'
+rowKey: 'id', // 之前是 '_id'
+```
+
+### 问题2：三步表单字段丢失
+
+**原因**：React 组件卸载时，Ant Design Form 的字段值被清除
+**解决**：所有字段始终渲染在 DOM 中，使用 CSS `display: none` 隐藏
+
+```javascript
+<div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+  <Form.Item name="category">...</Form.Item>
+</div>
+```
+
+### 问题3：后端响应数据格式不匹配
+
+**原因**：Spring Boot 后端返回 `Result<T>`，前端直接访问 `res.data` 获取不到业务数据
+**解决**：前端访问 `res.data.data`
+
+```javascript
+const res = await submissionAPI.getList();
+setSubmissions(res.data.data || []);
+```
+
+### 问题4：文件上传路径不正确
+
+**原因**：使用相对路径 `/api/upload`，导致跨域
+**解决**：使用完整 URL `http://localhost:8080/api/upload`
+
+### 问题5：状态切换后列表未刷新
+
+**原因**：操作成功后未重新加载列表，UI 显示旧状态
+**解决**：在 handleSubmit、handleWithdraw、handleDelete 成功后调用 loadSubmissions()
+
+### 问题6：证件验证算法复杂
+
+**原因**：香港身份证的校验码算法需要字母转数字、加权求和
+**解决**：查找香港身份证验证规则，编写详细算法，通过测试验证正确性
+
+---
+
+## 六、答辩要点
+
+### 1. 开场（30秒）
+
+"我是前端业务模块负责人，负责申报系统的核心业务页面：首页、创建申报、申报详情，以及证件号码验证工具。"
+
+### 2. 技术亮点（1分钟）
+
+- **5种证件验证**：身份证、护照、港澳、台湾，支持国家标准校验
+- **三步表单**：所有字段始终渲染，使用 CSS 隐藏，解决字段丢失问题
+- **状态管理**：申报状态流转（未提交→已提交→撤回），实时刷新列表
+- **动态字段**：根据申报类型动态显示不同字段
+- **截止时间检查**：自动关闭提交入口，防止过期提交
+- **数据适配**：Spring Boot 后端返回 `Result<T>`，前端 `res.data.data` 提取数据
+
+### 3. 核心代码展示（1分钟）
+
+展示 `idValidation.js` 中的身份证验证算法和 `SubmissionCreate.js` 中的三步表单字段渲染方案
+
+### 4. 问题解决（1分钟）
+
+讲述三步表单字段丢失的问题，以及通过所有字段始终渲染解决的方案
+
+### 5. 总结（30秒）
+
+"我的模块实现了申报系统的核心业务功能，包括创建、编辑、提交、撤回，以及5种证件的验证，确保了申报流程的完整性和数据的准确性。"
+
+---
+
+**答辩时长**：约 4 分钟
+
+---
+
+**成员B签名**：____________  
+**日期**：2026-06-11
