@@ -1,0 +1,63 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: submission-system
+  
+  # 数据源配置
+  datasource:
+    # 开发环境使用H2内存数据库，无需安装MySQL
+    url: jdbc:h2:mem:submission_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    
+    # 生产环境使用MySQL
+    # url: jdbc:mysql://localhost:3306/submission_db?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    # driver-class-name: com.mysql.cj.jdbc.Driver
+    # username: root
+    # password: 123456
+  
+  # H2控制台（开发调试）
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+  
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 100MB
+  
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+
+# MyBatis配置
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.submission.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# JWT配置
+jwt:
+  secret: submission-system-secret-key-2026-06-11
+  expiration: 604800000  # 7天，单位毫秒
+
+# 日志配置
+logging:
+  level:
+    com.submission.mapper: debug
+    org.springframework.web: debug
